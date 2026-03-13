@@ -580,6 +580,8 @@ textarea{resize:vertical;min-height:60px}
 
    <div class="sb-foot">
      <div class="sb-date" id="sbDate"></div>
+     <div id="gdSyncStatus" style="padding:4px 0 6px;min-height:22px;font-size:11px;color:var(--text3);text-align:center"></div>
+     <button class="btn sm" style="width:100%;text-align:center;margin-bottom:6px" onclick="gdConnect()" id="gdConnectBtn" title="Connect to Google Drive for cross-device sync">☁ Sync Drive</button>
      <button class="btn sm" style="width:100%;text-align:center" onclick="doLogout()">🔒 Lock</button>
    </div>
   </nav>
@@ -1238,6 +1240,33 @@ textarea{resize:vertical;min-height:60px}
           <button class="btn primary" onclick="jSaveEntry()">💾 Save Entry</button>
         </div>
       </div>
+    </div>
+  </div>
+  <!-- Cloud Sync card -->
+  <div class="card mt16" style="grid-column:span 2">
+    <div class="ctitle">☁ Cloud Sync <span id="gdSettingsBadge" style="font-size:11px;padding:2px 8px;border-radius:20px;margin-left:8px;background:var(--bg4);color:var(--text3)">Not connected</span></div>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:16px;line-height:1.6">
+      Sync your encrypted data to Google Drive. Your data is <strong>AES-256 encrypted</strong> before leaving this device — Google only stores an unreadable blob.
+      Access LifeVault from any device using the same Google account.
+    </div>
+    <div style="background:var(--bg3);border-radius:var(--r2);padding:14px;margin-bottom:14px">
+      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">Sync Status</div>
+      <div id="gdStatusRow" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <div>
+          <div id="gdStatusLabel" style="font-size:13px;color:var(--text3)">Not connected to Google Drive</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:3px">Last sync: <span id="gdLastSync">—</span></div>
+        </div>
+        <div class="flex gap8">
+          <button class="btn primary" onclick="gdConnect()" id="gdConnectSettingsBtn">☁ Connect Drive</button>
+          <button class="btn" onclick="gdManualBackup()" id="gdBackupBtn" style="display:none">☁ Backup Now</button>
+          <button class="btn" onclick="gdLoadFromDrive()" style="display:none" id="gdLoadBtn">↓ Load from Drive</button>
+          <button class="btn" onclick="gdDisconnect()" style="display:none;color:var(--red);border-color:var(--red)40" id="gdDisconnectBtn">Disconnect</button>
+        </div>
+      </div>
+    </div>
+    <div style="font-size:12px;color:var(--text3);padding:10px;background:var(--bg3);border-radius:var(--r2);border-left:3px solid var(--accent)40">
+      💡 <strong>How it works:</strong> Click <em>Connect Drive</em> → sign in with Google → your data auto-syncs after every change.
+      On a new device, open the app, connect Drive, and choose <em>Load from Drive</em> to restore all your data.
     </div>
   </div>
 </div>
@@ -2055,6 +2084,15 @@ function showApp() {
   migrateCCTransactions(); // clean up stale/orphaned CC transaction entries
   go('dashboard');
   checkStartupAlerts();
+  // Attempt silent Google Drive sign-in (no popup — just reconnects if previously authorised)
+  setTimeout(function(){
+    gdSilentInit().then(function(ok){
+      if(ok){
+        // Was previously connected — check if Drive has newer data
+        gdCheckOnFirstLoad(false);
+      }
+    }).catch(function(){});
+  }, 1500);
 }
 function doLogout() {
   // Wipe entire DB from memory — data only lives while logged in
@@ -4644,6 +4682,364 @@ function anzExportCSV(){
   a.download='LifeVault_Analysis_'+fromDate+'_to_'+toDate+'.csv'; a.click();
 }
 
+
+// ════════════════════════════════════════════════════════════
+//  GOOGLE DRIVE SYNC
+//  - Auto-sync after every lvCache() call
+//  - Encrypted blob goes to Drive (Google never sees plaintext)
+//  - File stored as: LifeVault_Backup.lv in app's Drive folder
+// ════════════════════════════════════════════════════════════
+
+const GD = {
+  CLIENT_ID: '295930402880-85oq06vfrqekc6lvcmksa8iavoknm0a8.apps.googleusercontent.com',
+  SCOPES: 'https://www.googleapis.com/auth/drive.appdata',
+  FILENAME: 'LifeVault_Backup.lv',
+  FOLDER: 'appDataFolder',  // hidden app-private folder in user's Drive
+  _token: null,
+  _fileId: null,
+  _syncing: false,
+  _pendingSync: false,
+  _lastSynced: null,
+  _initDone: false,
+};
+
+// ── Status bar UI ──────────────────────────────────────────
+function gdUpdateStatus(state, msg){
+  const el = document.getElementById('gdSyncStatus');
+  if(!el) return;
+  const states = {
+    idle:     {icon:'☁',  color:'var(--text3)',  text: GD._lastSynced ? 'Synced '+GD._lastSynced : 'Not synced yet'},
+    syncing:  {icon:'↻',  color:'var(--accent)', text:'Syncing…'},
+    ok:       {icon:'✓',  color:'var(--green)',  text: msg||'Synced'},
+    error:    {icon:'⚠',  color:'var(--red)',    text: msg||'Sync error'},
+    offline:  {icon:'⊘',  color:'var(--text3)',  text:'Drive disconnected'},
+    loading:  {icon:'↓',  color:'var(--blue)',   text:'Loading from Drive…'},
+  };
+  const s = states[state] || states.idle;
+  el.innerHTML = `<span style="color:${s.color};font-size:11px;display:flex;align-items:center;gap:5px">
+    <span style="font-size:13px">${s.icon}</span>${s.text}
+  </span>`;
+}
+
+// ── Load Google Identity Services ─────────────────────────
+function gdLoadGIS(){
+  return new Promise((resolve, reject) => {
+    if(window.google && window.google.accounts){ resolve(); return; }
+    const s = document.createElement('script');
+    s.src = 'https://accounts.google.com/gsi/client';
+    s.onload = resolve;
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
+// ── Get OAuth token (silent first, popup if needed) ───────
+async function gdGetToken(interactive){
+  await gdLoadGIS();
+  return new Promise((resolve, reject) => {
+    const client = google.accounts.oauth2.initTokenClient({
+      client_id: GD.CLIENT_ID,
+      scope: GD.SCOPES,
+      prompt: interactive ? 'consent' : '',
+      callback: (resp) => {
+        if(resp.error){ reject(resp.error); return; }
+        GD._token = resp.access_token;
+        resolve(resp.access_token);
+      }
+    });
+    if(!interactive){
+      client.requestAccessToken({prompt:''});
+    } else {
+      client.requestAccessToken();
+    }
+  });
+}
+
+// ── Connect to Drive (interactive sign-in) ────────────────
+async function gdConnect(){
+  try {
+    gdUpdateStatus('syncing','Connecting…');
+    await gdGetToken(true);
+    GD._initDone = true;
+    toast('Connected to Google Drive ✓','success');
+    gdUpdateStatus('ok','Connected');
+    // Immediately check for existing backup
+    await gdCheckOnFirstLoad(true);
+  } catch(e) {
+    console.error('Drive connect error:', e);
+    gdUpdateStatus('error','Sign-in failed');
+    toast('Drive sign-in failed: '+(e.message||e),'error');
+  }
+}
+
+// ── Disconnect ────────────────────────────────────────────
+function gdDisconnect(){
+  GD._token = null; GD._fileId = null; GD._initDone = false;
+  if(window.google && google.accounts && google.accounts.oauth2){
+    google.accounts.oauth2.revoke(GD._token||'');
+  }
+  gdUpdateStatus('offline');
+  toast('Disconnected from Google Drive','info');
+  renderSettings();
+}
+
+// ── Find existing backup file ID ─────────────────────────
+async function gdFindFile(){
+  if(!GD._token) return null;
+  const resp = await fetch(
+    `https://www.googleapis.com/drive/v3/files?spaces=${GD.FOLDER}&q=name='${GD.FILENAME}'&fields=files(id,modifiedTime)`,
+    { headers: { Authorization: 'Bearer '+GD._token } }
+  );
+  if(!resp.ok) return null;
+  const data = await resp.json();
+  return data.files && data.files.length ? data.files[0] : null;
+}
+
+// ── Upload encrypted blob to Drive ───────────────────────
+async function gdUpload(blob){
+  if(!GD._token) return false;
+
+  const meta = { name: GD.FILENAME, parents: [GD.FOLDER] };
+  const boundary = 'lv_boundary_'+Date.now();
+  const body = [
+    '--'+boundary,
+    'Content-Type: application/json; charset=UTF-8',
+    '',
+    JSON.stringify(meta),
+    '--'+boundary,
+    'Content-Type: text/plain; charset=UTF-8',
+    '',
+    blob,
+    '--'+boundary+'--'
+  ].join('\r\n');
+
+  let url, method;
+  if(GD._fileId){
+    url    = `https://www.googleapis.com/upload/drive/v3/files/${GD._fileId}?uploadType=multipart`;
+    method = 'PATCH';
+  } else {
+    url    = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
+    method = 'POST';
+  }
+
+  const resp = await fetch(url, {
+    method,
+    headers: {
+      Authorization: 'Bearer '+GD._token,
+      'Content-Type': `multipart/related; boundary=${boundary}`
+    },
+    body
+  });
+
+  if(!resp.ok){
+    const err = await resp.json().catch(()=>({}));
+    // Token expired — clear and mark for retry
+    if(resp.status===401){ GD._token=null; GD._initDone=false; }
+    throw new Error(err.error?.message || 'Upload failed '+resp.status);
+  }
+
+  const result = await resp.json();
+  GD._fileId = result.id;
+  return true;
+}
+
+// ── Download backup from Drive ────────────────────────────
+async function gdDownload(){
+  if(!GD._token) return null;
+  const file = await gdFindFile();
+  if(!file) return null;
+  GD._fileId = file.id;
+  const resp = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`,
+    { headers: { Authorization: 'Bearer '+GD._token } }
+  );
+  if(!resp.ok) return null;
+  return await resp.text();
+}
+
+// ── Auto-sync (called after every lvCache) ────────────────
+function gdAutoSync(blob){
+  if(!GD._initDone || !GD._token) return;
+  if(GD._syncing){ GD._pendingSync = blob; return; }
+  GD._syncing = true;
+  gdUpdateStatus('syncing');
+
+  gdUpload(blob)
+    .then(()=>{
+      const now = new Date();
+      GD._lastSynced = now.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+      gdUpdateStatus('ok', 'Saved '+GD._lastSynced);
+      // Update settings panel if visible
+      const el = document.getElementById('gdLastSync');
+      if(el) el.textContent = now.toLocaleString();
+    })
+    .catch(e=>{
+      console.warn('Drive sync error:', e);
+      gdUpdateStatus('error', 'Sync failed');
+    })
+    .finally(()=>{
+      GD._syncing = false;
+      if(GD._pendingSync){
+        const pending = GD._pendingSync; GD._pendingSync = null;
+        gdAutoSync(pending);
+      }
+    });
+}
+
+// ── On first load: check Drive for backup ─────────────────
+async function gdCheckOnFirstLoad(forceAsk){
+  if(!GD._token) return;
+  gdUpdateStatus('loading');
+  try {
+    const file = await gdFindFile();
+    if(!file){ gdUpdateStatus('ok','No backup found'); return; }
+    GD._fileId = file.id;
+    const modDate = new Date(file.modifiedTime).toLocaleString();
+
+    // Check if local data exists
+    const hasLocal = Object.keys(DB.transactions||{}).length > 0 ||
+                     (DB.bankAccounts||[]).length > 0 ||
+                     (DB.habits||[]).length > 0;
+
+    if(!hasLocal || forceAsk){
+      // Ask user
+      gdShowLoadPrompt(modDate);
+    } else {
+      gdUpdateStatus('ok');
+    }
+  } catch(e) {
+    console.warn('Drive check error:', e);
+    gdUpdateStatus('error','Could not check Drive');
+  }
+}
+
+// ── Load prompt dialog ─────────────────────────────────────
+function gdShowLoadPrompt(modDate){
+  const existing = document.getElementById('gdLoadModal');
+  if(existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'gdLoadModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:#0008;z-index:9999;display:flex;align-items:center;justify-content:center';
+  modal.innerHTML = `
+    <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r);padding:32px;max-width:420px;width:90%;box-shadow:0 20px 60px #0006">
+      <div style="font-size:20px;font-weight:700;color:var(--accent);margin-bottom:8px">☁ Drive Backup Found</div>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:20px;line-height:1.6">
+        A LifeVault backup was found in your Google Drive.<br>
+        <span style="color:var(--text3);font-size:12px">Last saved: ${modDate}</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <button class="btn primary" style="width:100%;padding:12px" onclick="gdLoadFromDrive()">
+          ↓ Load from Drive &nbsp;<span style="font-size:11px;opacity:.7">(replaces current data)</span>
+        </button>
+        <button class="btn" style="width:100%;padding:10px" onclick="document.getElementById('gdLoadModal').remove();gdUpdateStatus('ok')">
+          Keep current device data
+        </button>
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin-top:14px;text-align:center">
+        Your data is AES-256 encrypted — only you can read it
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+// ── Actually load + decrypt from Drive ────────────────────
+async function gdLoadFromDrive(){
+  const modal = document.getElementById('gdLoadModal');
+  if(modal) modal.remove();
+  gdUpdateStatus('loading');
+  try {
+    const blob = await gdDownload();
+    if(!blob){ toast('No backup found on Drive','error'); gdUpdateStatus('error','No backup'); return; }
+
+    // Decrypt
+    let parsed;
+    if(blob.startsWith('{')){ // plain JSON (legacy)
+      parsed = JSON.parse(blob);
+    } else {
+      if(!DB.password){
+        toast('Enter your password first — needed to decrypt the backup','error');
+        gdUpdateStatus('error','Password required');
+        return;
+      }
+      const plain = await lvDecrypt(blob, DB.password);
+      parsed = JSON.parse(plain);
+    }
+
+    // Merge password from current session so we don't lose login
+    parsed.password = DB.password;
+    Object.assign(DB, parsed);
+
+    // Re-render everything
+    lvCache();
+    refreshPanel(document.querySelector('.nb.active')?.getAttribute('onclick')?.match(/'(\w+)'/)?.[1] || 'dashboard');
+    renderDashboard(); renderAccounts(); renderCCs(); renderTxns();
+    const now = new Date();
+    GD._lastSynced = now.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+    gdUpdateStatus('ok','Loaded '+GD._lastSynced);
+    toast('✓ Data loaded from Google Drive','success');
+  } catch(e) {
+    console.error('Drive load error:', e);
+    gdUpdateStatus('error','Load failed');
+    toast('Failed to load from Drive: '+(e.message||e),'error');
+  }
+}
+
+// ── Manual backup now ──────────────────────────────────────
+async function gdManualBackup(){
+  if(!GD._initDone || !GD._token){
+    toast('Connect to Google Drive first (Settings → Cloud Sync)','error'); return;
+  }
+  const btn = document.getElementById('gdBackupBtn');
+  if(btn){ btn.disabled=true; btn.textContent='Saving…'; }
+  try {
+    // Get current encrypted blob from localStorage
+    const key = DB.password ? 'lv_db_enc' : 'lv_db';
+    const blob = localStorage.getItem(key);
+    if(!blob){ toast('No data to backup','error'); return; }
+    await gdUpload(blob);
+    const now = new Date();
+    GD._lastSynced = now.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+    gdUpdateStatus('ok','Saved '+GD._lastSynced);
+    const el = document.getElementById('gdLastSync'); if(el) el.textContent=now.toLocaleString();
+    toast('✓ Backed up to Google Drive','success');
+  } catch(e) {
+    gdUpdateStatus('error','Backup failed');
+    toast('Backup failed: '+(e.message||e),'error');
+  } finally {
+    if(btn){ btn.disabled=false; btn.textContent='☁ Backup Now'; }
+  }
+}
+
+// ── Try silent sign-in on startup ─────────────────────────
+async function gdSilentInit(){
+  try {
+    await gdLoadGIS();
+    // Try to get token silently (no popup)
+    const token = await new Promise((resolve, reject) => {
+      const client = google.accounts.oauth2.initTokenClient({
+        client_id: GD.CLIENT_ID,
+        scope: GD.SCOPES,
+        prompt: '',
+        callback: (resp) => resp.error ? reject(resp.error) : resolve(resp.access_token)
+      });
+      client.requestAccessToken({prompt:''});
+    });
+    GD._token = token;
+    GD._initDone = true;
+    // Find existing file ID
+    const file = await gdFindFile();
+    if(file) GD._fileId = file.id;
+    gdUpdateStatus('idle');
+    return true;
+  } catch(e) {
+    // Silent fail — user just isn't signed in yet
+    gdUpdateStatus('offline');
+    return false;
+  }
+}
+
+
 function renderReports(){
   const txn=DB.transactions;
   const ic={}, ec={};
@@ -4956,6 +5352,8 @@ function lvCache(){
       localStorage.setItem(key, blob);
     }catch(e){ console.warn('LS write error:', e); }
     lvUpdateStorageInfo();
+    // Auto-sync to Google Drive after every save
+    if(typeof gdAutoSync === 'function') gdAutoSync(blob);
   }
 
   if(DB.password){
