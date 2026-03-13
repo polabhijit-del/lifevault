@@ -500,6 +500,201 @@ textarea{resize:vertical;min-height:60px}
 
 .pw-li-badge-w{font-size:9px;color:#e05c5c;margin-left:3px}
 .pw-li-badge-r{font-size:9px;color:#e8994a;margin-left:3px}
+
+/* ═══════════════════════════════════════════════════════════
+   MOBILE RESPONSIVE — LifeVault
+   Breakpoints: 768px (tablet), 480px (phone)
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── Hamburger button (hidden on desktop) ─────────────────── */
+#mbMenu{
+  display:none;
+  background:none;border:none;cursor:pointer;
+  padding:8px;color:var(--text);font-size:22px;line-height:1;
+  flex-shrink:0;
+}
+
+/* ── Sidebar overlay backdrop ─────────────────────────────── */
+#sbOverlay{
+  display:none;position:fixed;inset:0;
+  background:rgba(0,0,0,.6);z-index:199;
+  backdrop-filter:blur(2px);
+}
+#sbOverlay.open{ display:block; }
+
+/* ── Floating Action Button — quick add transaction ──────── */
+#fabBtn{
+  display:none;
+  position:fixed;bottom:24px;right:20px;z-index:150;
+  width:56px;height:56px;border-radius:50%;
+  background:var(--accent);color:#000;font-size:26px;font-weight:300;
+  border:none;cursor:pointer;
+  box-shadow:0 4px 20px rgba(201,168,76,.5);
+  align-items:center;justify-content:center;
+  transition:transform .15s,box-shadow .15s;
+}
+#fabBtn:active{ transform:scale(.92); }
+
+/* ══════════════════════════════════════════════════════════
+   TABLET — 768px
+   ══════════════════════════════════════════════════════════ */
+@media(max-width:768px){
+
+  /* Sidebar: slide-in drawer */
+  #sb{
+    position:fixed;left:-240px;top:0;bottom:0;
+    width:240px;min-width:240px;
+    z-index:200;transition:left .25s cubic-bezier(.4,0,.2,1);
+    overflow-y:auto;
+  }
+  #sb.open{ left:0; box-shadow:4px 0 40px rgba(0,0,0,.6); }
+
+  /* Show all sidebar labels again (hidden at 900px) */
+  #sb .nb .nl,#sb .nglabel,#sb .sb-sub,#sb .sb-date{ display:block !important; }
+  #sb .sb-brand{ font-size:16px !important; }
+  :root{ --nav:0px; }
+
+  /* Hamburger visible */
+  #mbMenu{ display:flex; }
+
+  /* FAB visible */
+  #fabBtn{ display:flex; }
+
+  /* Main takes full width */
+  .main{ width:100vw; }
+
+  /* Topbar */
+  .topbar{ padding:0 10px; gap:8px; }
+  .tb-title{ font-size:15px; }
+
+  /* Hide bulky topbar buttons — keep only essentials */
+  .tb-actions .btn.sm:not(#tbSave):not(#tbSync){ display:none; }
+
+  /* Panels padding tighter */
+  .panels{ padding:0 12px 80px; } /* bottom padding for FAB */
+
+  /* Panel title */
+  .ptitle{ font-size:18px; }
+  .psub{ font-size:11px; }
+
+  /* Cards */
+  .card{ padding:14px; }
+  .ctitle{ font-size:10px; margin-bottom:10px; }
+
+  /* Summary cards — 2 columns */
+  .g4{ grid-template-columns:1fr 1fr !important; }
+  .g3{ grid-template-columns:1fr 1fr !important; }
+
+  /* Modal — bottom sheet style */
+  .mover{
+    align-items:flex-end !important;
+    padding:0 !important;
+  }
+  .mbox{
+    width:100% !important;
+    max-width:100% !important;
+    max-height:92vh !important;
+    border-radius:20px 20px 0 0 !important;
+    padding:20px 16px 28px !important;
+    margin:0 !important;
+  }
+
+  /* Modal header sticky */
+  .mhead{
+    position:sticky;top:0;
+    background:var(--bg2);
+    padding:0 0 12px;
+    margin:-4px -16px 12px;
+    padding:12px 16px;
+    border-bottom:1px solid var(--border);
+    z-index:2;
+  }
+  .mtitle{ font-size:16px; }
+
+  /* Form rows — single column on tablet */
+  .frow.c3,.frow.c4{ grid-template-columns:1fr 1fr !important; }
+
+  /* Tables — horizontal scroll with visual hint */
+  .twrap{
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+  table{ min-width:500px; }
+  th,td{ padding:8px 10px; font-size:12px; }
+
+  /* Buttons larger tap targets */
+  .btn{ padding:9px 14px; font-size:13px; min-height:38px; }
+  .btn.sm{ padding:7px 11px; min-height:34px; }
+
+  /* Login box */
+  .lbox{ padding:28px 20px; margin:16px; }
+
+  /* Habit grid — compact */
+  .hab-grid{ font-size:11px; }
+}
+
+/* ══════════════════════════════════════════════════════════
+   PHONE — 480px
+   ══════════════════════════════════════════════════════════ */
+@media(max-width:480px){
+
+  /* Summary cards — 2 per row, compact */
+  .g4,.g3,.g2{ grid-template-columns:1fr 1fr !important; }
+  .sc{ padding:12px 10px; }
+  .sv{ font-size:16px !important; }
+  .sl{ font-size:9px; letter-spacing:.5px; }
+
+  /* All form rows single column */
+  .frow,.frow.c2,.frow.c3,.frow.c4{ grid-template-columns:1fr !important; }
+
+  /* Panels */
+  .panels{ padding:0 8px 80px; }
+  .card{ padding:12px 10px; border-radius:10px; }
+
+  /* Topbar minimal */
+  .topbar{ padding:0 8px; }
+  .tb-title{ font-size:14px; }
+  #tbBack span{ display:none; } /* hide "Back" text, keep arrow */
+
+  /* Tables — more compact */
+  th,td{ padding:7px 8px; font-size:11px; white-space:nowrap; }
+
+  /* ptitle */
+  .ptitle{ font-size:16px; }
+
+  /* Modal full height on small screens */
+  .mbox{ max-height:96vh !important; padding:16px 12px 24px !important; }
+  .mhead{ padding:10px 12px; margin:-4px -12px 10px; }
+
+  /* Chip buttons in habit tracker */
+  .hab-chip{ width:28px !important; height:28px !important; font-size:9px !important; }
+
+  /* FAB position away from bottom nav */
+  #fabBtn{ bottom:20px; right:16px; width:52px; height:52px; font-size:24px; }
+
+  /* Login */
+  .lbox{ padding:24px 16px; margin:12px; }
+  .llogo{ font-size:28px; }
+  .linp{ font-size:16px; } /* prevents iOS zoom on focus */
+  .lbtn{ font-size:15px; padding:13px; }
+}
+
+/* ── Touch-friendly: prevent 300ms tap delay ──────────────── */
+@media(max-width:768px){
+  button,a,input,select,textarea,[onclick]{
+    touch-action:manipulation;
+  }
+  /* Prevent iOS text size adjust */
+  body{ -webkit-text-size-adjust:100%; }
+
+  /* Inputs — no zoom on iOS (requires font-size ≥ 16px on focus) */
+  input[type="text"],input[type="number"],input[type="date"],
+  input[type="password"],input[type="email"],input[type="month"],
+  input[type="time"],select,textarea{
+    font-size:16px !important;
+  }
+}
+
 </style>
 </head>
 <body>
@@ -532,6 +727,10 @@ textarea{resize:vertical;min-height:60px}
 
 <!-- ═══════════ APP ══════════════════════════════════════════ -->
 <div id="app">
+ <!-- Mobile sidebar overlay -->
+ <div id="sbOverlay" onclick="mbClose()"></div>
+ <!-- FAB — quick add transaction -->
+ <button id="fabBtn" onclick="go('transactions');setTimeout(()=>openM('txnModal'),200)" title="Add transaction">+</button>
  <div class="shell">
 
   <!-- ── SIDEBAR ──────────────────────────────────────────── -->
@@ -601,6 +800,7 @@ textarea{resize:vertical;min-height:60px}
   <div class="main">
    <div class="topbar">
      <div style="display:flex;align-items:center;gap:10px">
+       <button id="mbMenu" onclick="mbToggle()" title="Menu">☰</button>
        <button id="tbBack" class="btn sm" onclick="goBack()" style="display:none;align-items:center;gap:4px;padding:6px 12px" title="Go back">← Back</button>
        <div class="tb-title" id="tbTitle">Dashboard</div>
      </div>
@@ -2104,6 +2304,8 @@ function showApp() {
       }
     }).catch(function(){});
   }, 1500);
+  // Patch go() for mobile nav auto-close
+  mbPatchGo();
 }
 function doLogout() {
   // Wipe entire DB from memory — data only lives while logged in
@@ -5181,6 +5383,63 @@ async function gdSilentInit(){
   }
 }
 
+
+// ═══════════════════════════════════════════════════════════
+//  MOBILE NAV
+// ═══════════════════════════════════════════════════════════
+function mbToggle(){
+  const sb  = document.getElementById('sb');
+  const ov  = document.getElementById('sbOverlay');
+  const isOpen = sb.classList.contains('open');
+  if(isOpen){ mbClose(); } else {
+    sb.classList.add('open');
+    ov.classList.add('open');
+    document.body.style.overflow = 'hidden'; // prevent body scroll when drawer open
+  }
+}
+
+function mbClose(){
+  document.getElementById('sb').classList.remove('open');
+  document.getElementById('sbOverlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+// Close drawer when a nav item is tapped on mobile
+(function(){
+  const _go = window.go;
+  if(typeof _go === 'function'){
+    // go() is defined later — patch after DOM ready
+  }
+})();
+
+// Patch go() to close mobile nav — called after all JS loaded
+function mbPatchGo(){
+  const _origGo = window.go;
+  if(typeof _origGo !== 'function') return;
+  window.go = function(panel){
+    _origGo(panel);
+    if(window.innerWidth <= 768) mbClose();
+  };
+}
+
+// Close sidebar on swipe-left gesture
+(function(){
+  let touchStartX = 0;
+  document.addEventListener('touchstart', function(e){
+    touchStartX = e.touches[0].clientX;
+  }, {passive:true});
+  document.addEventListener('touchend', function(e){
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    if(dx < -60){ // swipe left 60px
+      const sb = document.getElementById('sb');
+      if(sb && sb.classList.contains('open')) mbClose();
+    }
+    if(dx > 60 && e.changedTouches[0].clientX < 30){ // swipe right from left edge
+      const sb = document.getElementById('sb');
+      if(sb && !sb.classList.contains('open') && window.innerWidth <= 768) mbToggle();
+    }
+  }, {passive:true});
+})();
 
 function renderReports(){
   const txn=DB.transactions;
