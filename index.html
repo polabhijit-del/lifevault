@@ -4692,9 +4692,9 @@ function anzExportCSV(){
 
 const GD = {
   CLIENT_ID: '295930402880-85oq06vfrqekc6lvcmksa8iavoknm0a8.apps.googleusercontent.com',
-  SCOPES: 'https://www.googleapis.com/auth/drive.appdata',
+  SCOPES: 'https://www.googleapis.com/auth/drive.file',
   FILENAME: 'LifeVault_Backup.lv',
-  FOLDER: 'appDataFolder',  // hidden app-private folder in user's Drive
+  FOLDER: null,  // drive.file scope — no special folder, stored in root of Drive
   _token: null,
   _fileId: null,
   _syncing: false,
@@ -4791,8 +4791,10 @@ function gdDisconnect(){
 // ── Find existing backup file ID ─────────────────────────
 async function gdFindFile(){
   if(!GD._token) return null;
+  // drive.file scope: search in user's Drive (app can only see files it created)
+  const q = encodeURIComponent(`name='${GD.FILENAME}' and trashed=false`);
   const resp = await fetch(
-    `https://www.googleapis.com/drive/v3/files?spaces=${GD.FOLDER}&q=name='${GD.FILENAME}'&fields=files(id,modifiedTime)`,
+    `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,modifiedTime)&spaces=drive`,
     { headers: { Authorization: 'Bearer '+GD._token } }
   );
   if(!resp.ok) return null;
@@ -4808,9 +4810,10 @@ async function gdUpload(blob){
   const isUpdate = !!GD._fileId;
 
   // parents field must ONLY be included on CREATE — Google rejects it on PATCH
+  // drive.file scope: no special folder needed — file goes to root of Drive
   const meta = isUpdate
     ? { name: GD.FILENAME }
-    : { name: GD.FILENAME, parents: [GD.FOLDER] };
+    : { name: GD.FILENAME };  // drive.file scope — no parents needed
 
   const body = [
     '--'+boundary,
