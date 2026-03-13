@@ -4836,8 +4836,24 @@ async function loginRestoreFromDrive(){
       return;
     }
 
-    // Step 5: load into DB and log in
+    // Step 5: wipe any corrupt local data, load fresh from Drive
     parsed.password = pwd;
+
+    // Clear corrupt IndexedDB + localStorage before writing clean data
+    try { localStorage.removeItem('lv_db'); localStorage.removeItem('lv_db_enc'); } catch(e){}
+    await new Promise(resolve => {
+      lvOpenDB(function(db){
+        if(db){
+          try {
+            var tx = db.transaction('data','readwrite');
+            tx.objectStore('data').delete('db');
+            tx.oncomplete = resolve;
+            tx.onerror = resolve;
+          } catch(e){ resolve(); }
+        } else { resolve(); }
+      });
+    });
+
     Object.assign(DB, parsed);
     DB.password = pwd;
 
@@ -7143,6 +7159,13 @@ document.addEventListener('DOMContentLoaded', function(){
       }
       var btn = document.querySelector('#loginScreen button');
       if(btn) btn.textContent = 'Unlock';
+      // Also show Drive restore option — in case this is wrong/corrupted local data
+      var driveSection = document.getElementById('loginDriveSection');
+      if(driveSection){
+        driveSection.style.display = 'block';
+        var driveLabel = driveSection.querySelector('div');
+        if(driveLabel) driveLabel.textContent = 'Wrong device data? Restore from Drive instead:';
+      }
     } else if(result){
       // Legacy unencrypted data (migration path)
       Object.assign(DB, result);
