@@ -516,6 +516,17 @@ textarea{resize:vertical;min-height:60px}
     <button class="lbtn" onclick="doLogin()">Unlock LifeVault</button>
     <div class="lerr" id="loginError">Incorrect password. Try again.</div>
     <div class="lhint" id="loginHint" style="font-size:11px">🔐 New? Set a password — all data will be AES-256 encrypted.</div>
+
+    <!-- Drive restore — shown only on new devices with no local data -->
+    <div id="loginDriveSection" style="display:none;margin-top:20px;border-top:1px solid var(--border);padding-top:18px">
+      <div style="font-size:12px;color:var(--text2);margin-bottom:12px;text-align:center">
+        Already have LifeVault data on another device?
+      </div>
+      <button class="lbtn" style="background:transparent;border:1.5px solid var(--accent);color:var(--accent);margin-bottom:8px" onclick="loginRestoreFromDrive()">
+        ☁ Restore from Google Drive
+      </button>
+      <div id="loginDriveStatus" style="font-size:11px;color:var(--text3);text-align:center;min-height:16px"></div>
+    </div>
   </div>
 </div>
 
@@ -4756,6 +4767,99 @@ async function gdGetToken(interactive){
 }
 
 // ── Connect to Drive (interactive sign-in) ────────────────
+// Called from login screen on new device — fetch from Drive, decrypt with password, log in
+async function loginRestoreFromDrive(){
+  const pwd = document.getElementById('loginPwd').value.trim();
+  const statusEl = document.getElementById('loginDriveStatus');
+  const btn = document.querySelector('#loginDriveSection button');
+
+  if(!pwd){
+    if(statusEl) statusEl.textContent = '⚠ Enter your password first, then click Restore.';
+    if(statusEl) statusEl.style.color = 'var(--red)';
+    document.getElementById('loginPwd').focus();
+    return;
+  }
+
+  if(btn){ btn.disabled=true; btn.textContent='Connecting…'; }
+  if(statusEl){ statusEl.textContent='Signing in to Google…'; statusEl.style.color='var(--text3)'; }
+
+  try {
+    // Step 1: get Google token
+    await gdLoadGIS();
+    const token = await new Promise((resolve, reject) => {
+      google.accounts.oauth2.initTokenClient({
+        client_id: GD.CLIENT_ID,
+        scope: GD.SCOPES,
+        callback: (resp) => resp.error ? reject(resp.error) : resolve(resp.access_token)
+      }).requestAccessToken();
+    });
+    GD._token = token;
+    GD._initDone = true;
+    localStorage.setItem('lv_gd_connected','1');
+
+    if(statusEl) statusEl.textContent = '☁ Connected. Looking for backup…';
+
+    // Step 2: find backup file
+    const file = await gdFindFile();
+    if(!file){
+      if(statusEl){ statusEl.textContent = '⚠ No backup found in Drive. Set a new password to start fresh.'; statusEl.style.color='var(--red)'; }
+      if(btn){ btn.disabled=false; btn.textContent='☁ Restore from Google Drive'; }
+      return;
+    }
+    GD._fileId = file.id;
+    if(statusEl) statusEl.textContent = '↓ Backup found. Downloading…';
+
+    // Step 3: download blob
+    const resp = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`,
+      { headers: { Authorization: 'Bearer '+GD._token } }
+    );
+    if(!resp.ok) throw new Error('Download failed: '+resp.status);
+    const blob = await resp.text();
+
+    if(statusEl) statusEl.textContent = '🔓 Decrypting with your password…';
+
+    // Step 4: decrypt
+    let parsed;
+    try {
+      if(blob.startsWith('{')){
+        parsed = JSON.parse(blob);
+      } else {
+        const plain = await lvDecrypt(blob, pwd);
+        parsed = JSON.parse(plain);
+      }
+    } catch(e){
+      if(statusEl){ statusEl.textContent = '⚠ Wrong password — decryption failed.'; statusEl.style.color='var(--red)'; }
+      if(btn){ btn.disabled=false; btn.textContent='☁ Restore from Google Drive'; }
+      document.getElementById('loginPwd').value='';
+      document.getElementById('loginPwd').focus();
+      return;
+    }
+
+    // Step 5: load into DB and log in
+    parsed.password = pwd;
+    Object.assign(DB, parsed);
+    DB.password = pwd;
+
+    // Store locally so future logins work offline
+    lvCache();
+
+    if(statusEl){ statusEl.textContent = '✓ Restored! Logging in…'; statusEl.style.color='var(--green)'; }
+    setTimeout(()=>{
+      showApp();
+      toast('✓ Data restored from Google Drive','success');
+      const now = new Date();
+      GD._lastSynced = now.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+      gdUpdateStatus('ok','Restored '+GD._lastSynced);
+    }, 600);
+
+  } catch(e){
+    console.error('Login restore error:', e);
+    if(statusEl){ statusEl.textContent = '⚠ '+(e.message||e); statusEl.style.color='var(--red)'; }
+    if(btn){ btn.disabled=false; btn.textContent='☁ Restore from Google Drive'; }
+  }
+}
+
 async function gdConnect(){
   try {
     gdUpdateStatus('syncing','Connecting…');
@@ -7067,12 +7171,15 @@ document.addEventListener('DOMContentLoaded', function(){
         hint.style.color = 'var(--green)';
       }
     } else {
-      // First time user
+      // First time user — no local data
       if(hint){
         hint.textContent = 'New to LifeVault? Set a password to get started.';
         hint.style.display = 'block';
         hint.style.color = 'var(--text3)';
       }
+      // Show "Restore from Drive" section — helpful for existing users on new device
+      var driveSection = document.getElementById('loginDriveSection');
+      if(driveSection) driveSection.style.display = 'block';
     }
   });
 });
