@@ -4804,8 +4804,14 @@ async function gdFindFile(){
 async function gdUpload(blob){
   if(!GD._token) return false;
 
-  const meta = { name: GD.FILENAME, parents: [GD.FOLDER] };
   const boundary = 'lv_boundary_'+Date.now();
+  const isUpdate = !!GD._fileId;
+
+  // parents field must ONLY be included on CREATE — Google rejects it on PATCH
+  const meta = isUpdate
+    ? { name: GD.FILENAME }
+    : { name: GD.FILENAME, parents: [GD.FOLDER] };
+
   const body = [
     '--'+boundary,
     'Content-Type: application/json; charset=UTF-8',
@@ -4818,17 +4824,12 @@ async function gdUpload(blob){
     '--'+boundary+'--'
   ].join('\r\n');
 
-  let url, method;
-  if(GD._fileId){
-    url    = `https://www.googleapis.com/upload/drive/v3/files/${GD._fileId}?uploadType=multipart`;
-    method = 'PATCH';
-  } else {
-    url    = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
-    method = 'POST';
-  }
+  const url = isUpdate
+    ? `https://www.googleapis.com/upload/drive/v3/files/${GD._fileId}?uploadType=multipart`
+    : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
 
   const resp = await fetch(url, {
-    method,
+    method: isUpdate ? 'PATCH' : 'POST',
     headers: {
       Authorization: 'Bearer '+GD._token,
       'Content-Type': `multipart/related; boundary=${boundary}`
@@ -4838,8 +4839,12 @@ async function gdUpload(blob){
 
   if(!resp.ok){
     const err = await resp.json().catch(()=>({}));
-    // Token expired — clear and mark for retry
     if(resp.status===401){ GD._token=null; GD._initDone=false; }
+    // If file not found (404/403 on update), clear fileId and retry as new upload
+    if(isUpdate && (resp.status===404||resp.status===403)){
+      GD._fileId = null;
+      return gdUpload(blob);
+    }
     throw new Error(err.error?.message || 'Upload failed '+resp.status);
   }
 
