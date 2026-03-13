@@ -4761,9 +4761,12 @@ async function gdConnect(){
     gdUpdateStatus('syncing','Connecting…');
     await gdGetToken(true);
     GD._initDone = true;
+    // Remember that user connected so silent re-auth works next time
+    localStorage.setItem('lv_gd_connected','1');
     toast('Connected to Google Drive ✓','success');
     gdUpdateStatus('ok','Connected');
-    // Immediately check for existing backup
+    renderSettings();
+    // Check for existing backup — always ask since user just manually connected
     await gdCheckOnFirstLoad(true);
   } catch(e) {
     console.error('Drive connect error:', e);
@@ -4774,9 +4777,11 @@ async function gdConnect(){
 
 // ── Disconnect ────────────────────────────────────────────
 function gdDisconnect(){
+  const tok = GD._token;
   GD._token = null; GD._fileId = null; GD._initDone = false;
-  if(window.google && google.accounts && google.accounts.oauth2){
-    google.accounts.oauth2.revoke(GD._token||'');
+  localStorage.removeItem('lv_gd_connected');
+  if(window.google && google.accounts && google.accounts.oauth2 && tok){
+    google.accounts.oauth2.revoke(tok);
   }
   gdUpdateStatus('offline');
   toast('Disconnected from Google Drive','info');
@@ -4897,15 +4902,17 @@ async function gdCheckOnFirstLoad(forceAsk){
     const modDate = new Date(file.modifiedTime).toLocaleString();
 
     // Check if local data exists
-    const hasLocal = Object.keys(DB.transactions||{}).length > 0 ||
+    const hasLocal = (DB.transactions||[]).length > 0 ||
                      (DB.bankAccounts||[]).length > 0 ||
                      (DB.habits||[]).length > 0;
 
-    if(!hasLocal || forceAsk){
-      // Ask user
-      gdShowLoadPrompt(modDate);
+    // Always ask (per user preference) — but if no local data, just load silently
+    if(!hasLocal && !forceAsk){
+      // No local data at all — load from Drive automatically
+      gdLoadFromDrive();
     } else {
-      gdUpdateStatus('ok');
+      // Has local data OR explicitly asked — show prompt
+      gdShowLoadPrompt(modDate);
     }
   } catch(e) {
     console.warn('Drive check error:', e);
@@ -4972,8 +4979,8 @@ async function gdLoadFromDrive(){
 
     // Re-render everything
     lvCache();
-    refreshPanel(document.querySelector('.nb.active')?.getAttribute('onclick')?.match(/'(\w+)'/)?.[1] || 'dashboard');
-    renderDashboard(); renderAccounts(); renderCCs(); renderTxns();
+    const activePanel = document.querySelector('.nb.active')?.getAttribute('onclick')?.match(/'(\w+)'/)?.[1] || 'dashboard';
+    refreshPanel(activePanel);
     const now = new Date();
     GD._lastSynced = now.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
     gdUpdateStatus('ok','Loaded '+GD._lastSynced);
@@ -5013,6 +5020,8 @@ async function gdManualBackup(){
 
 // ── Try silent sign-in on startup ─────────────────────────
 async function gdSilentInit(){
+  // Only attempt silent re-auth if user previously connected on this device
+  if(!localStorage.getItem('lv_gd_connected')) return false;
   try {
     await gdLoadGIS();
     // Try to get token silently (no popup)
@@ -5023,7 +5032,12 @@ async function gdSilentInit(){
         prompt: '',
         callback: (resp) => resp.error ? reject(resp.error) : resolve(resp.access_token)
       });
-      client.requestAccessToken({prompt:''});
+      // Short timeout — if no response in 5s, treat as failed
+      const t = setTimeout(()=>reject('timeout'), 5000);
+      const origCb = (resp) => { clearTimeout(t); resp.error ? reject(resp.error) : resolve(resp.access_token); };
+      google.accounts.oauth2.initTokenClient({
+        client_id: GD.CLIENT_ID, scope: GD.SCOPES, prompt: '', callback: origCb
+      }).requestAccessToken({prompt:''});
     });
     GD._token = token;
     GD._initDone = true;
@@ -5033,7 +5047,7 @@ async function gdSilentInit(){
     gdUpdateStatus('idle');
     return true;
   } catch(e) {
-    // Silent fail — user just isn't signed in yet
+    // Silent fail — token expired or user not signed in
     gdUpdateStatus('offline');
     return false;
   }
