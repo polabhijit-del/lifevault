@@ -503,7 +503,7 @@ textarea{resize:vertical;min-height:60px}
 
 /* ═══════════════════════════════════════════════════════════
    MOBILE RESPONSIVE — LifeVault
-   Breakpoints: 768px (tablet), 480px (phone)
+   Breakpoints: 1180px (all tablets incl iPad landscape), 480px (phone)
    ═══════════════════════════════════════════════════════════ */
 
 /* ── Hamburger button (hidden on desktop) ─────────────────── */
@@ -536,9 +536,9 @@ textarea{resize:vertical;min-height:60px}
 #fabBtn:active{ transform:scale(.92); }
 
 /* ══════════════════════════════════════════════════════════
-   TABLET — 768px
+   TABLET/iPAD — up to 1180px (covers all iPads incl. landscape)
    ══════════════════════════════════════════════════════════ */
-@media(max-width:768px){
+@media(max-width:1180px){
 
   /* Sidebar: slide-in drawer */
   #sb{
@@ -586,17 +586,42 @@ textarea{resize:vertical;min-height:60px}
   .g3{ grid-template-columns:1fr 1fr !important; }
 
   /* Modal — bottom sheet style */
-  .mover{
+  .mo{
     align-items:flex-end !important;
     padding:0 !important;
+    /* Prevent overlay tap-close at bottom where buttons sit */
+    touch-action:none;
   }
   .mbox{
     width:100% !important;
     max-width:100% !important;
     max-height:92vh !important;
     border-radius:20px 20px 0 0 !important;
-    padding:20px 16px 28px !important;
+    padding:20px 16px 0 16px !important;
     margin:0 !important;
+    /* Stop taps on mbox propagating to .mo overlay */
+    touch-action:auto;
+  }
+  /* Scrollable content area inside bottom sheet */
+  .mbox > *:not(.mfoot):not(.mtitle) {
+    overflow-y:auto;
+  }
+  /* Footer: safe area for iPhone home bar + extra tap space */
+  .mfoot{
+    position:sticky !important;
+    bottom:0 !important;
+    padding:12px 0 !important;
+    padding-bottom:calc(12px + env(safe-area-inset-bottom, 12px)) !important;
+    margin:0 -0px !important;
+    background:var(--bg2) !important;
+    z-index:10 !important;
+  }
+  .mfoot .btn{
+    flex:1 !important;
+    padding:13px 10px !important;
+    font-size:15px !important;
+    min-height:48px !important;
+    justify-content:center !important;
   }
 
   /* Modal header sticky */
@@ -679,8 +704,27 @@ textarea{resize:vertical;min-height:60px}
   .lbtn{ font-size:15px; padding:13px; }
 }
 
+/* ── iPad Pro 12.9" landscape (1366px) — also needs mobile layout ── */
+@media(max-width:1366px) and (pointer:coarse){
+  #mbMenu{ display:flex !important; }
+  #fabBtn{ display:flex !important; }
+  #sb{
+    position:fixed !important;left:-240px !important;top:0;bottom:0;
+    width:240px !important;min-width:240px !important;
+    z-index:200;transition:left .25s cubic-bezier(.4,0,.2,1);
+  }
+  #sb.open{ left:0 !important; box-shadow:4px 0 40px rgba(0,0,0,.6); }
+  :root{ --nav:0px !important; }
+  .panels{ padding:0 16px 80px !important; }
+  .mo{ align-items:flex-end !important; padding:0 !important; }
+  .mbox{ width:100% !important; max-width:100% !important; border-radius:20px 20px 0 0 !important;
+         padding:20px 16px 0 16px !important; }
+  .mfoot{ padding-bottom:calc(12px + env(safe-area-inset-bottom,12px)) !important; z-index:10 !important; }
+  .mfoot .btn{ flex:1 !important; min-height:48px !important; font-size:15px !important; }
+}
+
 /* ── Touch-friendly: prevent 300ms tap delay ──────────────── */
-@media(max-width:768px){
+@media(max-width:1180px){
   button,a,input,select,textarea,[onclick]{
     touch-action:manipulation;
   }
@@ -792,7 +836,7 @@ textarea{resize:vertical;min-height:60px}
      <div class="sb-date" id="sbDate"></div>
      <div id="gdSyncStatus" style="padding:4px 0 6px;min-height:22px;font-size:11px;color:var(--text3);text-align:center"></div>
      <button class="btn sm" style="width:100%;text-align:center;margin-bottom:6px" onclick="gdConnect()" id="gdConnectBtn" title="Connect to Google Drive for cross-device sync">☁ Sync Drive</button>
-     <button class="btn sm" style="width:100%;text-align:center" onclick="doLogout()">🔒 Lock</button>
+     <button class="btn sm" style="width:100%;text-align:center;min-height:44px;padding-bottom:calc(8px + env(safe-area-inset-bottom,0px))" onclick="doLogout()">🔒 Lock</button>
    </div>
   </nav>
 
@@ -2411,7 +2455,16 @@ function refreshPanel(n) {
 // ════════════════════════════════════════════════════════════
 function openM(id){ document.getElementById(id).classList.add('open'); }
 function closeM(id){ document.getElementById(id).classList.remove('open'); }
-document.addEventListener('click',e=>{ if(e.target.classList.contains('mo')) e.target.classList.remove('open'); });
+document.addEventListener('click',e=>{
+  // Close modal only if clicking the overlay background directly — not any child element
+  if(e.target.classList.contains('mo')){
+    e.target.classList.remove('open');
+  }
+});
+// On touch devices, prevent .mo overlay touch from closing modal when buttons are near edge
+document.addEventListener('touchend',e=>{
+  if(e.target.classList.contains('mo') && !e.cancelable) return;
+},{ passive:true });
 function v(id){ return document.getElementById(id)?.value||''; }
 function sv(id,val){
   const el=document.getElementById(id);
@@ -5418,7 +5471,7 @@ function mbPatchGo(){
   if(typeof _origGo !== 'function') return;
   window.go = function(panel){
     _origGo(panel);
-    if(window.innerWidth <= 768) mbClose();
+    if(window.innerWidth <= 1180) mbClose();
   };
 }
 
@@ -5436,7 +5489,7 @@ function mbPatchGo(){
     }
     if(dx > 60 && e.changedTouches[0].clientX < 30){ // swipe right from left edge
       const sb = document.getElementById('sb');
-      if(sb && !sb.classList.contains('open') && window.innerWidth <= 768) mbToggle();
+      if(sb && !sb.classList.contains('open') && window.innerWidth <= 1180) mbToggle();
     }
   }, {passive:true});
 })();
