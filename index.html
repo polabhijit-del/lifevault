@@ -1265,11 +1265,11 @@ textarea{resize:vertical;min-height:60px}
   <div class="g2 mt16">
     <div class="card">
       <div class="ctitle">Income by Category</div>
-      <div id="repIncDonut" style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap"></div>
+      <div id="repIncDonut" style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap;padding-top:8px"></div>
     </div>
     <div class="card">
       <div class="ctitle">Expenses by Category</div>
-      <div id="repExpDonut" style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap"></div>
+      <div id="repExpDonut" style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap;padding-top:8px"></div>
     </div>
   </div>
 
@@ -4863,7 +4863,7 @@ function repSVG(w,h,body){
 }
 
 function repCard(label, value, color, sub){
-  return '<div class="sc"><div class="sl">'+label+'</div><div class="sv" style="color:'+color+'">'+value+'</div><div style="font-size:11px;color:var(--text3);margin-top:2px">'+sub+'</div></div>';
+  return '<div class="sc" style="padding:22px 24px"><div class="sl" style="font-size:11px;letter-spacing:1.5px;margin-bottom:8px">'+label+'</div><div class="sv" style="color:'+color+';font-size:24px;font-weight:700;margin-bottom:4px">'+value+'</div><div style="font-size:11px;color:var(--text3);margin-top:2px">'+sub+'</div></div>';
 }
 
 // ── Donut chart ────────────────────────────────────────────
@@ -4872,7 +4872,7 @@ function repDonut(entries, total, containerId){
   if(!el) return;
   if(!total || !entries.length){ el.innerHTML='<div class="xs" style="color:var(--text3);padding:10px">No data.</div>'; return; }
   const COLORS=['#c9a84c','#5b8cf5','#4caf82','#e05c5c','#9b72cf','#e8994a','#4cb6cf','#cf4c7a','#aaa','#555'];
-  const R=70, CX=80, CY=80;
+  const R=95, CX=108, CY=108;
   let angle=-Math.PI/2, slices='';
   entries.forEach((d,i)=>{
     const frac=d.value/total, end=angle+frac*2*Math.PI;
@@ -4885,14 +4885,14 @@ function repDonut(entries, total, containerId){
     slices+='<path d="M'+CX+','+CY+' L'+x1+','+y1+' A'+R+','+R+' 0 '+large+',1 '+x2+','+y2+' Z" fill="'+clr+'" opacity="0.85" style="cursor:pointer" onclick="'+onclick_attr+'" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.85"><title>'+d.label+': '+fmt(d.value)+'</title></path>';
     angle=end;
   });
-  const center='<text x="'+CX+'" y="'+(CY-6)+'" text-anchor="middle" font-family="DM Mono,monospace" font-size="11" fill="var(--text2)">'+fmt(total)+'</text>';
-  const svg=repSVG(160,160,'<circle cx="'+CX+'" cy="'+CY+'" r="'+R+'" fill="none" stroke="var(--bg4)" stroke-width="28"/>'+slices+center);
+  const center='<text x="'+CX+'" y="'+(CY-6)+'" text-anchor="middle" font-family="DM Mono,monospace" font-size="13" font-weight="700" fill="var(--text)">'+fmt(total)+'</text><text x="'+CX+'" y="'+(CY+12)+'" text-anchor="middle" font-family="DM Sans,sans-serif" font-size="10" fill="var(--text3)">total</text>';
+  const svg=repSVG(216,216,'<circle cx="'+CX+'" cy="'+CY+'" r="'+R+'" fill="none" stroke="var(--bg4)" stroke-width="30"/>'+slices+center);
   const legend=entries.slice(0,8).map((d,i)=>{
     const oc='repDrillCat(\'' + d.label.replace(/'/g,"\\'") + '\')';
-    return '<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;cursor:pointer;font-size:12px" onclick="'+oc+'">'
-      +'<div style="width:10px;height:10px;border-radius:2px;background:'+COLORS[i%COLORS.length]+';flex-shrink:0"></div>'
-      +'<div style="color:var(--text2);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+d.label+'</div>'
-      +'<div style="color:var(--text3);font-size:11px;margin-left:auto;padding-left:8px;font-family:monospace">'+fmt(d.value)+'</div></div>';
+    return '<div style="display:flex;align-items:center;gap:9px;margin-bottom:9px;cursor:pointer;font-size:13px;line-height:1.3" onclick="'+oc+'">'
+      +'<div style="width:12px;height:12px;border-radius:3px;background:'+COLORS[i%COLORS.length]+';flex-shrink:0"></div>'
+      +'<div style="color:var(--text);max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+d.label+'</div>'
+      +'<div style="color:var(--text2);font-size:12px;margin-left:auto;padding-left:10px;font-family:monospace;font-weight:600">'+fmt(d.value)+'</div></div>';
   }).join('');
   el.innerHTML='<div style="flex-shrink:0">'+svg+'</div><div style="flex:1;padding-top:4px">'+legend+'</div>';
 }
@@ -4900,7 +4900,7 @@ function repDonut(entries, total, containerId){
 // ── Trend bar+line chart ────────────────────────────────────
 function repTrend(months, incV, expV){
   const el=document.getElementById('repTrendChart'); if(!el) return;
-  const W=760,H=160,PL=55,PR=15,PT=15,PB=35;
+  const W=760,H=200,PL=65,PR=20,PT=20,PB=40;
   const cw=W-PL-PR, ch=H-PT-PB;
   const mx=Math.max(...incV,...expV,1);
   const sx=i=>PL+i/(Math.max(months.length-1,1))*cw;
@@ -4910,8 +4910,8 @@ function repTrend(months, incV, expV){
   let g='';
   [0,.25,.5,.75,1].forEach(f=>{
     const yw=sy(mx*f);
-    g+='<line x1="'+PL+'" y1="'+yw+'" x2="'+(W-PR)+'" y2="'+yw+'" stroke="var(--border)" stroke-width="0.7" stroke-dasharray="4,3"/>';
-    g+='<text x="'+(PL-5)+'" y="'+(yw+4)+'" text-anchor="end" font-size="8" fill="var(--text3)">'+(mx*f/1000).toFixed(0)+'k</text>';
+    g+='<line x1="'+PL+'" y1="'+yw+'" x2="'+(W-PR)+'" y2="'+yw+'" stroke="var(--border)" stroke-width="0.8" stroke-dasharray="4,3"/>';
+    g+='<text x="'+(PL-8)+'" y="'+(yw+4)+'" text-anchor="end" font-size="12" fill="var(--text2)" font-weight="500">'+(mx*f/1000).toFixed(0)+'k</text>';
   });
 
   // Smooth path builder
@@ -4938,7 +4938,7 @@ function repTrend(months, incV, expV){
     const oce='repDrillMonth(\'' + m + '\',\'expense\')';
     if(_repView.income)  g+='<circle cx="'+sx(i)+'" cy="'+sy(incV[i])+'" r="4" fill="var(--green)" stroke="var(--bg2)" stroke-width="2" style="cursor:pointer" onclick="'+oci+'"><title>'+m+' Income: '+fmt(incV[i])+'</title></circle>';
     if(_repView.expense) g+='<circle cx="'+sx(i)+'" cy="'+sy(expV[i])+'" r="4" fill="var(--red)"   stroke="var(--bg2)" stroke-width="2" style="cursor:pointer" onclick="'+oce+'"><title>'+m+' Expense: '+fmt(expV[i])+'</title></circle>';
-    g+='<text x="'+sx(i)+'" y="'+(H-8)+'" text-anchor="middle" font-size="9" fill="var(--text3)">'+m.substring(5)+'/'+m.substring(2,4)+'</text>';
+    g+='<text x="'+sx(i)+'" y="'+(H-12)+'" text-anchor="middle" font-size="12" fill="var(--text2)" font-weight="600">'+m.substring(5)+'/'+m.substring(2,4)+'</text>';
   });
   el.innerHTML=repSVG(W,H,g);
   const leg=document.getElementById('repTrendLegend');
@@ -4980,26 +4980,26 @@ function renderRepMoM(){
       v2:txn.filter(t=>t.date.startsWith(m2)&&EXP.includes(t.type)&&(t.category||'Other')===c).reduce((s,t)=>s+t.amount,0),
       clr:'var(--text3)'}))
   ];
-  const W=700,PL=130,PR=70,rh=26,gap=5,PT=28;
+  const W=700,PL=150,PR=75,rh=34,gap=8,PT=34;
   const bw=Math.min(260,(W-PL-PR)/2-8);
   const mx=Math.max(...rows.flatMap(r=>[r.v1,r.v2]),1);
   const svgH=PT+rows.length*(rh+gap)+10;
   let g='';
-  g+='<text x="'+(PL+bw/2)+'" y="18" text-anchor="middle" font-size="10" font-weight="700" fill="var(--accent)">'+m1+'</text>';
-  g+='<text x="'+(PL+bw+8+bw/2)+'" y="18" text-anchor="middle" font-size="10" font-weight="700" fill="var(--blue)">'+m2+'</text>';
+  g+='<text x="'+(PL+bw/2)+'" y="20" text-anchor="middle" font-size="13" font-weight="700" fill="var(--accent)">'+m1+'</text>';
+  g+='<text x="'+(PL+bw+8+bw/2)+'" y="20" text-anchor="middle" font-size="13" font-weight="700" fill="var(--blue)">'+m2+'</text>';
   rows.forEach((r,i)=>{
     const y=PT+i*(rh+gap);
     const w1=Math.max(0,(r.v1/mx)*bw), w2=Math.max(0,(r.v2/mx)*bw);
-    g+='<text x="'+(PL-6)+'" y="'+(y+rh/2+4)+'" text-anchor="end" font-size="10" fill="var(--text2)">'+r.l+'</text>';
+    g+='<text x="'+(PL-8)+'" y="'+(y+rh/2+5)+'" text-anchor="end" font-size="13" font-weight="600" fill="var(--text)">'+r.l+'</text>';
     g+='<rect x="'+PL+'" y="'+y+'" width="'+w1+'" height="'+rh+'" rx="3" fill="'+r.clr+'" opacity="0.75"/>';
     g+='<rect x="'+(PL+bw+8)+'" y="'+y+'" width="'+w2+'" height="'+rh+'" rx="3" fill="var(--blue)" opacity="0.6"/>';
     const fv1=fmt(r.v1), fv2=fmt(r.v2);
-    g+='<text x="'+(w1>30?PL+w1-3:PL+w1+4)+'" y="'+(y+rh/2+4)+'" text-anchor="'+(w1>30?'end':'start')+'" font-size="9" fill="'+(w1>30?'#fff':r.clr)+'">'+fv1+'</text>';
-    g+='<text x="'+(w2>30?PL+bw+8+w2-3:PL+bw+12+w2)+'" y="'+(y+rh/2+4)+'" text-anchor="'+(w2>30?'end':'start')+'" font-size="9" fill="'+(w2>30?'#fff':'var(--blue)')+'">'+fv2+'</text>';
+    g+='<text x="'+(w1>40?PL+w1-5:PL+w1+5)+'" y="'+(y+rh/2+5)+'" text-anchor="'+(w1>40?'end':'start')+'" font-size="11" font-weight="600" fill="'+(w1>40?'#fff':r.clr)+'">'+fv1+'</text>';
+    g+='<text x="'+(w2>40?PL+bw+8+w2-5:PL+bw+13+w2)+'" y="'+(y+rh/2+5)+'" text-anchor="'+(w2>40?'end':'start')+'" font-size="11" font-weight="600" fill="'+(w2>40?'#fff':'var(--blue)')+'">'+fv2+'</text>';
     const chg=r.v1>0?((r.v2-r.v1)/r.v1*100):0;
     const cs=r.v1>0?(chg>0?'+':'')+chg.toFixed(0)+'%':'—';
     const cc=chg>0?'var(--red)':chg<0?'var(--green)':'var(--text3)';
-    g+='<text x="'+(W-5)+'" y="'+(y+rh/2+4)+'" text-anchor="end" font-size="9" fill="'+cc+'" font-weight="600">'+cs+'</text>';
+    g+='<text x="'+(W-5)+'" y="'+(y+rh/2+5)+'" text-anchor="end" font-size="12" fill="'+cc+'" font-weight="700">'+cs+'</text>';
   });
   el.innerHTML=repSVG(W,svgH,g);
 }
@@ -5020,8 +5020,8 @@ function repRenderWaterfall(txnAll){
     {l:'Net Savings',v:Math.abs(net),base:0,clr:net>=0?'var(--green)':'var(--red)'},
   ].filter(b=>b.v>0);
   if(!bars.length){ el.innerHTML='<div class="xs" style="color:var(--text3);padding:10px">No data in range.</div>'; return; }
-  const W=660,H=150,PL=60,PB=38,PT=10,PR=20;
-  const bw=Math.min(90,(W-PL-PR)/bars.length-18);
+  const W=700,H=200,PL=70,PB=46,PT=20,PR=20;
+  const bw=Math.min(70,(W-PL-PR)/bars.length-30);
   const allV=bars.map(b=>b.base+(b.neg?0:b.v)); const mx=Math.max(...allV,inc,1)*1.1;
   const sy=v=>PT+(H-PB-PT)*(1-v/mx);
   let g='';
@@ -5031,8 +5031,8 @@ function repRenderWaterfall(txnAll){
     const bh=Math.max(2,Math.abs(bot-top));
     const realTop=Math.min(top,bot);
     g+='<rect x="'+x+'" y="'+realTop+'" width="'+bw+'" height="'+bh+'" rx="4" fill="'+b.clr+'" opacity="0.8"/>';
-    g+='<text x="'+(x+bw/2)+'" y="'+(realTop-4)+'" text-anchor="middle" font-size="9" fill="'+b.clr+'" font-weight="600">'+fmt(b.v)+'</text>';
-    g+='<text x="'+(x+bw/2)+'" y="'+(H-10)+'" text-anchor="middle" font-size="10" fill="var(--text3)">'+b.l+'</text>';
+    g+='<text x="'+(x+bw/2)+'" y="'+(realTop-6)+'" text-anchor="middle" font-size="11" fill="'+b.clr+'" font-weight="700">'+fmt(b.v)+'</text>';
+    g+='<text x="'+(x+bw/2)+'" y="'+(H-14)+'" text-anchor="middle" font-size="13" fill="var(--text)" font-weight="600">'+b.l+'</text>';
     if(i>0&&b.neg){ const px=PL+(W-PL-PR)*(i-1)/bars.length+(W-PL-PR)/bars.length/2+bw/2; g+='<line x1="'+px+'" y1="'+sy(b.base)+'" x2="'+x+'" y2="'+sy(b.base)+'" stroke="var(--border2)" stroke-width="1" stroke-dasharray="3,2"/>'; }
   });
   el.innerHTML=repSVG(W,H,g);
@@ -5054,9 +5054,9 @@ function repRenderTop5(){
     const pct=(a/mx*100).toFixed(1);
     html+='<div style="margin-bottom:10px;cursor:pointer" onclick="repDrillCat(this.dataset.cat)" data-cat="'+c.replace(/"/g,'&quot;')+'">';
     html+='<div style="display:flex;justify-content:space-between;margin-bottom:4px">';
-    html+='<div style="display:flex;align-items:center;gap:8px"><span style="font-size:16px;font-weight:700;color:var(--text3)">'+(i+1)+'</span><span style="font-size:13px">'+c+'</span></div>';
-    html+='<span class="mono" style="color:var(--red)">'+fmt(a)+'</span></div>';
-    html+='<div class="pbwrap"><div class="pbfill" style="width:'+pct+'%;background:var(--red)"></div></div></div>';
+    html+='<div style="display:flex;align-items:center;gap:10px"><span style="font-size:18px;font-weight:800;color:var(--text3);min-width:22px">'+(i+1)+'</span><span style="font-size:14px;font-weight:600">'+c+'</span></div>';
+    html+='<span class="mono" style="color:var(--red);font-size:14px;font-weight:600">'+fmt(a)+'</span></div>';
+    html+='<div class="pbwrap" style="height:6px"><div class="pbfill" style="width:'+pct+'%;background:var(--red);height:6px"></div></div></div>';
   });
   el.innerHTML=html;
 }
@@ -5066,7 +5066,7 @@ function repRenderSavingsLine(txnAll, months){
   const el=document.getElementById('repNWChart'); if(!el) return;
   const INC=['Income','Advance Received','Loan Repaid In'];
   const EXP=['Expense','Advance Expense','Advance Repayment','Loan Given'];
-  const W=760,H=130,PL=65,PR=15,PT=10,PB=32;
+  const W=760,H=160,PL=70,PR=15,PT=15,PB=38;
   const cw=W-PL-PR, ch=H-PT-PB;
   let running=0;
   const pts=months.map(m=>{
@@ -5081,12 +5081,12 @@ function repRenderSavingsLine(txnAll, months){
   const smooth=ps=>ps.map(([x,y],i,a)=>{ if(i===0) return 'M'+x+','+y; const cx=(a[i-1][0]+x)/2; return 'C'+cx+','+a[i-1][1]+' '+cx+','+y+' '+x+','+y; }).join(' ');
   const coords=months.map((_,i)=>[sx(i),sy(pts[i])]);
   let g='';
-  [-.5,0,.5].forEach(f=>{ const yw=sy(mx*f); g+='<line x1="'+PL+'" y1="'+yw+'" x2="'+(W-PR)+'" y2="'+yw+'" stroke="var(--border)" stroke-width="0.7" stroke-dasharray="4,3"/>'; g+='<text x="'+(PL-5)+'" y="'+(yw+4)+'" text-anchor="end" font-size="8" fill="var(--text3)">'+(mx*f/1000).toFixed(0)+'k</text>'; });
+  [-.5,0,.5].forEach(f=>{ const yw=sy(mx*f); g+='<line x1="'+PL+'" y1="'+yw+'" x2="'+(W-PR)+'" y2="'+yw+'" stroke="var(--border)" stroke-width="0.8" stroke-dasharray="4,3"/>'; g+='<text x="'+(PL-8)+'" y="'+(yw+4)+'" text-anchor="end" font-size="12" font-weight="500" fill="var(--text2)">'+(mx*f/1000).toFixed(0)+'k</text>'; });
   g+='<line x1="'+PL+'" y1="'+zero+'" x2="'+(W-PR)+'" y2="'+zero+'" stroke="var(--border2)" stroke-width="1.5"/>';
   g+='<path d="'+smooth(coords)+' L'+sx(months.length-1)+','+zero+' L'+sx(0)+','+zero+' Z" fill="var(--accent)" opacity="0.13"/>';
   g+='<path d="'+smooth(coords)+'" fill="none" stroke="var(--accent)" stroke-width="2.5"/>';
   coords.forEach(([x,y],i)=>{ g+='<circle cx="'+x+'" cy="'+y+'" r="3.5" fill="var(--accent)" stroke="var(--bg2)" stroke-width="2"><title>'+months[i]+': '+fmt(pts[i])+'</title></circle>'; });
-  months.forEach((_,i)=>{ g+='<text x="'+sx(i)+'" y="'+(H-8)+'" text-anchor="middle" font-size="9" fill="var(--text3)">'+months[i].substring(5)+'/'+months[i].substring(2,4)+'</text>'; });
+  months.forEach((_,i)=>{ g+='<text x="'+sx(i)+'" y="'+(H-12)+'" text-anchor="middle" font-size="12" font-weight="600" fill="var(--text2)">'+months[i].substring(5)+'/'+months[i].substring(2,4)+'</text>'; });
   el.innerHTML=repSVG(W,H,g);
 }
 
