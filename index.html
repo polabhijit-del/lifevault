@@ -2537,7 +2537,7 @@ function refreshPanel(n) {
   if(n==='medical')     renderMedical();
   if(n==='insurance')   renderIns();
   if(n==='documents')   renderDocs();
-  if(n==='reports')     { repInit(); renderReports(); }
+  if(n==='reports')     { if(!v('repFrom')) repInit(); renderReports(); }
   if(n==='settings')    renderSettings();
   if(n==='analysis')    { if(!v('anzFrom')) anzInit(); renderAnalysis(); }
   if(n==='passwords')   { if(!DB.passwords) DB.passwords=[]; renderPasswords(); }
@@ -4818,9 +4818,12 @@ function repInit(){
   const now = new Date();
   const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0');
   const last = new Date(y, now.getMonth()+1, 0).getDate();
-  document.getElementById('repFrom').value = y+'-01-01';
-  document.getElementById('repTo').value   = y+'-'+m+'-'+String(last).padStart(2,'0');
-  document.getElementById('repQuick').value = 'this_year';
+  const from = document.getElementById('repFrom');
+  const to   = document.getElementById('repTo');
+  if(from) from.value = y+'-01-01';
+  if(to)   to.value   = y+'-'+m+'-'+String(last).padStart(2,'0');
+  const qs = document.getElementById('repQuick');
+  if(qs) qs.value = 'this_year';
 }
 
 function repSetQuick(val){
@@ -4830,7 +4833,7 @@ function repSetQuick(val){
   const eom = (yr,mn) => new Date(yr, mn+1, 0).getDate();
   let from, to;
   if(val==='this_month'){ from=y+'-'+pad(mo+1)+'-01'; to=y+'-'+pad(mo+1)+'-'+pad(eom(y,mo)); }
-  else if(val==='last_month'){ const d=new Date(y,mo-1,1); const ly=d.getFullYear(),lm=d.getMonth(); from=ly+'-'+pad(lm+1)+'-01'; to=ly+'-'+pad(lm+1)+'-'+pad(eom(ly,lm)); }
+  else if(val==='last_month'){ const d=new Date(y,mo-1,1),ly=d.getFullYear(),lm=d.getMonth(); from=ly+'-'+pad(lm+1)+'-01'; to=ly+'-'+pad(lm+1)+'-'+pad(eom(ly,lm)); }
   else if(val==='last3'){ const d=new Date(y,mo-2,1); from=d.getFullYear()+'-'+pad(d.getMonth()+1)+'-01'; to=y+'-'+pad(mo+1)+'-'+pad(eom(y,mo)); }
   else if(val==='last6'){ const d=new Date(y,mo-5,1); from=d.getFullYear()+'-'+pad(d.getMonth()+1)+'-01'; to=y+'-'+pad(mo+1)+'-'+pad(eom(y,mo)); }
   else if(val==='this_year'){ from=y+'-01-01'; to=y+'-12-31'; }
@@ -4840,334 +4843,270 @@ function repSetQuick(val){
     if(txns.length){ const dates=txns.map(t=>t.date).sort(); from=dates[0]; to=dates[dates.length-1]; }
     else { from=y+'-01-01'; to=y+'-12-31'; }
   }
-  document.getElementById('repFrom').value = from;
-  document.getElementById('repTo').value = to;
+  const fe=document.getElementById('repFrom'), te=document.getElementById('repTo');
+  if(fe) fe.value=from; if(te) te.value=to;
   renderReports();
 }
 
 function repToggle(mode){
-  if(mode==='income'){ _repView.income=!_repView.income; }
-  else if(mode==='expense'){ _repView.expense=!_repView.expense; }
+  if(mode==='income') _repView.income=!_repView.income;
+  else if(mode==='expense') _repView.expense=!_repView.expense;
   else { _repView.income=true; _repView.expense=true; }
-  document.getElementById('repToggleInc').className = 'btn sm '+(_repView.income?'primary':'');
-  document.getElementById('repToggleExp').className = 'btn sm '+(_repView.expense?'primary':'');
+  const bi=document.getElementById('repToggleInc'), be=document.getElementById('repToggleExp');
+  if(bi) bi.className='btn sm '+(_repView.income?'primary':'');
+  if(be) be.className='btn sm '+(_repView.expense?'primary':'');
   renderReports();
 }
 
-function repGetRange(){
-  repInit();
-  return { from: document.getElementById('repFrom').value, to: document.getElementById('repTo').value };
+function repSVG(w,h,body){
+  return '<svg viewBox="0 0 '+w+' '+h+'" width="100%" style="overflow:visible">'+body+'</svg>';
 }
 
-// ── SVG helpers ────────────────────────────────────────────
-function repSVG(w,h,body){ return `<svg viewBox="0 0 ${w} ${h}" width="100%" style="overflow:visible">${body}</svg>`; }
+function repCard(label, value, color, sub){
+  return '<div class="sc"><div class="sl">'+label+'</div><div class="sv" style="color:'+color+'">'+value+'</div><div style="font-size:11px;color:var(--text3);margin-top:2px">'+sub+'</div></div>';
+}
 
 // ── Donut chart ────────────────────────────────────────────
-function repDonut(data, totalLabel, containerId, onClickFn){
+function repDonut(entries, total, containerId){
   const el = document.getElementById(containerId);
   if(!el) return;
-  const total = data.reduce((s,d)=>s+d.v,0);
-  if(!total){ el.innerHTML='<div class="xs" style="color:var(--text3);padding:10px">No data.</div>'; return; }
-
-  const R=70, CX=80, CY=80, stroke=28;
-  const COLORS=['#c9a84c','#5b8cf5','#4caf82','#e05c5c','#9b72cf','#e8994a','#4cb6cf','#cf4c7a','#e8994a','#888'];
-  let angle = -Math.PI/2;
-  let slices = '';
-  const sorted = [...data].sort((a,b)=>b.v-a.v);
-  sorted.forEach((d,i)=>{
-    const frac = d.v/total;
-    const start = angle;
-    const end = angle + frac * 2*Math.PI;
-    const large = frac > 0.5 ? 1 : 0;
-    const x1=CX+R*Math.cos(start), y1=CY+R*Math.sin(start);
+  if(!total || !entries.length){ el.innerHTML='<div class="xs" style="color:var(--text3);padding:10px">No data.</div>'; return; }
+  const COLORS=['#c9a84c','#5b8cf5','#4caf82','#e05c5c','#9b72cf','#e8994a','#4cb6cf','#cf4c7a','#aaa','#555'];
+  const R=70, CX=80, CY=80;
+  let angle=-Math.PI/2, slices='';
+  entries.forEach((d,i)=>{
+    const frac=d.value/total, end=angle+frac*2*Math.PI;
+    const large=frac>0.5?1:0;
+    const x1=CX+R*Math.cos(angle), y1=CY+R*Math.sin(angle);
     const x2=CX+R*Math.cos(end),   y2=CY+R*Math.sin(end);
-    const clr = COLORS[i%COLORS.length];
-    const mid = start + (end-start)/2;
-    const pct = (frac*100).toFixed(0);
-    slices += `<path d="M${CX},${CY} L${x1},${y1} A${R},${R} 0 ${large},1 ${x2},${y2} Z"
-      fill="${clr}" opacity="0.85" style="cursor:pointer;transition:opacity .15s"
-      onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.85"
-      onclick="${onClickFn}('${d.k.replace(/'/g,"&#39;")}')">
-      <title>${d.k}: ${fmt(d.v)} (${pct}%)</title></path>`;
-    angle = end;
+    const clr=COLORS[i%COLORS.length];
+    const lbl=d.label.replace(/'/g,'&#39;');
+    const onclick_attr = 'repDrillCat(\'' + lbl + '\')';
+    slices+='<path d="M'+CX+','+CY+' L'+x1+','+y1+' A'+R+','+R+' 0 '+large+',1 '+x2+','+y2+' Z" fill="'+clr+'" opacity="0.85" style="cursor:pointer" onclick="'+onclick_attr+'" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.85"><title>'+d.label+': '+fmt(d.value)+'</title></path>';
+    angle=end;
   });
-  // Center label
-  const centerText = `<text x="${CX}" y="${CY-6}" text-anchor="middle" font-family="DM Mono,monospace" font-size="11" fill="var(--text2)">${fmt(total)}</text>
-    <text x="${CX}" y="${CY+10}" text-anchor="middle" font-family="DM Sans,sans-serif" font-size="9" fill="var(--text3)">${totalLabel}</text>`;
-  const donutSVG = repSVG(160,160, `<circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="var(--bg4)" stroke-width="${stroke}"/>${slices}${centerText}`);
-
-  // Legend
-  const legend = sorted.slice(0,8).map((d,i)=>`
-    <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;cursor:pointer;font-size:12px"
-      onclick="${onClickFn}('${d.k.replace(/'/g,"&#39;")}')">
-      <div style="width:10px;height:10px;border-radius:2px;background:${COLORS[i%COLORS.length]};flex-shrink:0"></div>
-      <div style="color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px" title="${d.k}">${d.k}</div>
-      <div style="color:var(--text3);font-size:11px;margin-left:auto;padding-left:8px;font-family:monospace">${fmt(d.v)}</div>
-    </div>`).join('');
-
-  el.innerHTML = `<div style="flex-shrink:0">${donutSVG}</div><div style="flex:1;padding-top:4px">${legend}</div>`;
+  const center='<text x="'+CX+'" y="'+(CY-6)+'" text-anchor="middle" font-family="DM Mono,monospace" font-size="11" fill="var(--text2)">'+fmt(total)+'</text>';
+  const svg=repSVG(160,160,'<circle cx="'+CX+'" cy="'+CY+'" r="'+R+'" fill="none" stroke="var(--bg4)" stroke-width="28"/>'+slices+center);
+  const legend=entries.slice(0,8).map((d,i)=>{
+    const oc='repDrillCat(\'' + d.label.replace(/'/g,"\\'") + '\')';
+    return '<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;cursor:pointer;font-size:12px" onclick="'+oc+'">'
+      +'<div style="width:10px;height:10px;border-radius:2px;background:'+COLORS[i%COLORS.length]+';flex-shrink:0"></div>'
+      +'<div style="color:var(--text2);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+d.label+'</div>'
+      +'<div style="color:var(--text3);font-size:11px;margin-left:auto;padding-left:8px;font-family:monospace">'+fmt(d.value)+'</div></div>';
+  }).join('');
+  el.innerHTML='<div style="flex-shrink:0">'+svg+'</div><div style="flex:1;padding-top:4px">'+legend+'</div>';
 }
 
-// ── Trend chart ────────────────────────────────────────────
-function repTrend(months, incVals, expVals){
-  const W=800, H=180, PL=60, PR=20, PT=20, PB=40;
+// ── Trend bar+line chart ────────────────────────────────────
+function repTrend(months, incV, expV){
+  const el=document.getElementById('repTrendChart'); if(!el) return;
+  const W=760,H=160,PL=55,PR=15,PT=15,PB=35;
   const cw=W-PL-PR, ch=H-PT-PB;
-  const allVals=[...incVals,...expVals].filter(v=>v>0);
-  const mx=Math.max(...allVals,1);
-  const scaleY = v => PT+ch - (v/mx)*ch;
-  const scaleX = i => PL + i/(months.length-1)*cw;
+  const mx=Math.max(...incV,...expV,1);
+  const sx=i=>PL+i/(Math.max(months.length-1,1))*cw;
+  const sy=v=>PT+ch-(v/mx)*ch;
 
-  let incPath='', expPath='', incArea='', expArea='';
-  const pts_i=[], pts_e=[];
-  months.forEach((m,i)=>{ pts_i.push([scaleX(i),scaleY(incVals[i])]); pts_e.push([scaleX(i),scaleY(expVals[i])]); });
+  // Y gridlines
+  let g='';
+  [0,.25,.5,.75,1].forEach(f=>{
+    const yw=sy(mx*f);
+    g+='<line x1="'+PL+'" y1="'+yw+'" x2="'+(W-PR)+'" y2="'+yw+'" stroke="var(--border)" stroke-width="0.7" stroke-dasharray="4,3"/>';
+    g+='<text x="'+(PL-5)+'" y="'+(yw+4)+'" text-anchor="end" font-size="8" fill="var(--text3)">'+(mx*f/1000).toFixed(0)+'k</text>';
+  });
 
-  // Smooth cubic bezier
-  const smooth = pts => pts.map((p,i,a)=>{
-    if(i===0) return `M${p[0]},${p[1]}`;
-    const cp1x=(a[i-1][0]+p[0])/2, cp1y=a[i-1][1], cp2x=cp1x, cp2y=p[1];
-    return `C${cp1x},${cp1y} ${cp2x},${cp2y} ${p[0]},${p[1]}`;
+  // Smooth path builder
+  const smooth=pts=>pts.map(([x,y],i,a)=>{
+    if(i===0) return 'M'+x+','+y;
+    const cx=(a[i-1][0]+x)/2;
+    return 'C'+cx+','+a[i-1][1]+' '+cx+','+y+' '+x+','+y;
   }).join(' ');
 
-  if(pts_i.length>1){
-    incPath=`<path d="${smooth(pts_i)}" fill="none" stroke="var(--green)" stroke-width="2.5" opacity="0.9"/>`;
-    incArea=`<path d="${smooth(pts_i)} L${pts_i[pts_i.length-1][0]},${PT+ch} L${pts_i[0][0]},${PT+ch} Z" fill="var(--green)" opacity="0.08"/>`;
-  }
-  if(pts_e.length>1){
-    expPath=`<path d="${smooth(pts_e)}" fill="none" stroke="var(--red)" stroke-width="2.5" opacity="0.9"/>`;
-    expArea=`<path d="${smooth(pts_e)} L${pts_e[pts_e.length-1][0]},${PT+ch} L${pts_e[0][0]},${PT+ch} Z" fill="var(--red)" opacity="0.08"/>`;
-  }
+  const ptsI=months.map((_,i)=>[sx(i),sy(incV[i])]);
+  const ptsE=months.map((_,i)=>[sx(i),sy(expV[i])]);
 
-  // Dots & labels
-  let dots='', xlabels='', ylines='';
-  pts_i.forEach(([x,y],i)=>{
-    if(_repView.income) dots+=`<circle cx="${x}" cy="${y}" r="4" fill="var(--green)" stroke="var(--bg2)" stroke-width="2" style="cursor:pointer" onclick="repDrillMonth('${months[i]}','income')"><title>${months[i]}: ${fmt(incVals[i])}</title></circle>`;
-  });
-  pts_e.forEach(([x,y],i)=>{
-    if(_repView.expense) dots+=`<circle cx="${x}" cy="${y}" r="4" fill="var(--red)" stroke="var(--bg2)" stroke-width="2" style="cursor:pointer" onclick="repDrillMonth('${months[i]}','expense')"><title>${months[i]}: ${fmt(expVals[i])}</title></circle>`;
-    xlabels+=`<text x="${x}" y="${H-8}" text-anchor="middle" font-size="9" fill="var(--text3)">${months[i].substring(5)+'/'+(months[i].substring(2,4))}</text>`;
-  });
-
-  // Y axis gridlines (4 levels)
-  for(let k=0;k<=4;k++){
-    const yv=mx*k/4, yw=scaleY(yv);
-    ylines+=`<line x1="${PL}" y1="${yw}" x2="${W-PR}" y2="${yw}" stroke="var(--border)" stroke-width="0.8" stroke-dasharray="4,3"/>`;
-    ylines+=`<text x="${PL-6}" y="${yw+4}" text-anchor="end" font-size="9" fill="var(--text3)">${(yv/1000).toFixed(0)}k</text>`;
+  if(_repView.income&&months.length>1){
+    g+='<path d="'+smooth(ptsI)+' L'+sx(months.length-1)+','+(PT+ch)+' L'+sx(0)+','+(PT+ch)+' Z" fill="var(--green)" opacity="0.1"/>';
+    g+='<path d="'+smooth(ptsI)+'" fill="none" stroke="var(--green)" stroke-width="2.5"/>';
+  }
+  if(_repView.expense&&months.length>1){
+    g+='<path d="'+smooth(ptsE)+' L'+sx(months.length-1)+','+(PT+ch)+' L'+sx(0)+','+(PT+ch)+' Z" fill="var(--red)" opacity="0.1"/>';
+    g+='<path d="'+smooth(ptsE)+'" fill="none" stroke="var(--red)" stroke-width="2.5"/>';
   }
 
-  const body = ylines+
-    (_repView.income?incArea:'')+(_repView.expense?expArea:'')+
-    (_repView.income?incPath:'')+(_repView.expense?expPath:'')+
-    dots+xlabels;
-  document.getElementById('repTrendChart').innerHTML = repSVG(W,H,body);
-  document.getElementById('repTrendLegend').innerHTML =
-    `<span style="color:var(--green)">■ Income</span><span style="color:var(--red)">■ Expense</span>`;
-}
-
-// ── Waterfall ──────────────────────────────────────────────
-function repWaterfall(from, to){
-  const txn=DB.transactions.filter(t=>t.date>=from&&t.date<=to);
-  const INC=['Income','Advance Received','Loan Repaid In'];
-  const EXP=['Expense','Advance Expense','Advance Repayment','Loan Given'];
-  const inc=txn.filter(t=>INC.includes(t.type)).reduce((s,t)=>s+t.amount,0);
-  const exp=txn.filter(t=>EXP.includes(t.type)).reduce((s,t)=>s+t.amount,0);
-  const xfr=txn.filter(t=>t.type==='Transfer'||t.type==='Cash Withdrawal').reduce((s,t)=>s+t.amount,0);
-  const ccpay=txn.filter(t=>t.type==='CC Payment').reduce((s,t)=>s+t.amount,0);
-  const net=inc-exp;
-
-  const bars=[
-    {l:'Income',v:inc,clr:'var(--green)',base:0,abs:true},
-    {l:'Expenses',v:-exp,clr:'var(--red)',base:inc,abs:false},
-    {l:'Transfers',v:-xfr,clr:'var(--accent)',base:Math.max(0,inc-exp),abs:false},
-    {l:'Net Savings',v:net,clr:net>=0?'var(--green)':'var(--red)',base:0,abs:true},
-  ].filter(b=>Math.abs(b.v)>0||b.l==='Net Savings');
-
-  const W=700,H=160,PL=80,PB=40,PT=10,PR=20;
-  const bw=Math.min(80, (W-PL-PR)/bars.length-20);
-  const allV=[...bars.map(b=>b.base+(b.abs?b.v:0)), ...bars.map(b=>b.base), inc];
-  const mx=Math.max(...allV.map(Math.abs),1)*1.1;
-  const sy = v => PT+(H-PB-PT)*(1-v/mx);
-
-  let rects='', xlabs='', ylabs='';
-  bars.forEach((b,i)=>{
-    const x=PL+(W-PL-PR)*i/bars.length+(W-PL-PR)/bars.length/2-bw/2;
-    const top=b.abs ? Math.min(sy(0),sy(b.v)) : Math.min(sy(b.base),sy(b.base+b.v));
-    const bot=b.abs ? Math.max(sy(0),sy(b.v)) : Math.max(sy(b.base),sy(b.base+b.v));
-    const bh=Math.max(2,bot-top);
-    const fmtV=fmt(Math.abs(b.v));
-    rects+=`<rect x="${x}" y="${top}" width="${bw}" height="${bh}" rx="4" fill="${b.clr}" opacity="0.8"/>`;
-    rects+=`<text x="${x+bw/2}" y="${top-4}" text-anchor="middle" font-size="9" fill="${b.clr}" font-weight="600">${fmtV}</text>`;
-    xlabs+=`<text x="${x+bw/2}" y="${H-6}" text-anchor="middle" font-size="10" fill="var(--text3)">${b.l}</text>`;
-    // connector line
-    if(i>0&&!b.abs){
-      const prevB=bars[i-1];
-      const prevX=PL+(W-PL-PR)*(i-1)/bars.length+(W-PL-PR)/bars.length/2+bw/2;
-      const prevY=sy(prevB.abs ? prevB.v : prevB.base+prevB.v);
-      rects+=`<line x1="${prevX}" y1="${prevY}" x2="${x}" y2="${prevY}" stroke="var(--border2)" stroke-width="1" stroke-dasharray="3,2"/>`;
-    }
+  months.forEach((m,i)=>{
+    const oci='repDrillMonth(\'' + m + '\',\'income\')';
+    const oce='repDrillMonth(\'' + m + '\',\'expense\')';
+    if(_repView.income)  g+='<circle cx="'+sx(i)+'" cy="'+sy(incV[i])+'" r="4" fill="var(--green)" stroke="var(--bg2)" stroke-width="2" style="cursor:pointer" onclick="'+oci+'"><title>'+m+' Income: '+fmt(incV[i])+'</title></circle>';
+    if(_repView.expense) g+='<circle cx="'+sx(i)+'" cy="'+sy(expV[i])+'" r="4" fill="var(--red)"   stroke="var(--bg2)" stroke-width="2" style="cursor:pointer" onclick="'+oce+'"><title>'+m+' Expense: '+fmt(expV[i])+'</title></circle>';
+    g+='<text x="'+sx(i)+'" y="'+(H-8)+'" text-anchor="middle" font-size="9" fill="var(--text3)">'+m.substring(5)+'/'+m.substring(2,4)+'</text>';
   });
-  document.getElementById('repWaterfall').innerHTML=repSVG(W,H,ylabs+rects+xlabs);
+  el.innerHTML=repSVG(W,H,g);
+  const leg=document.getElementById('repTrendLegend');
+  if(leg) leg.innerHTML='<span style="color:var(--green)">■ Income</span><span style="color:var(--red)">■ Expense</span>';
 }
 
-// ── Top 5 expenses ─────────────────────────────────────────
-function repTop5(from, to){
-  const now=new Date();
-  const mon=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-  document.getElementById('repTop5Month').textContent=mon.substring(5)+'/'+mon.substring(0,4);
-  const txn=DB.transactions.filter(t=>t.date.startsWith(mon)&&['Expense','Advance Expense'].includes(t.type));
-  const cats={};
-  txn.forEach(t=>{ const c=t.category||'Other'; cats[c]=(cats[c]||0)+t.amount; });
-  const top=Object.entries(cats).sort((a,b)=>b[1]-a[1]).slice(0,5);
-  const mx=top[0]?.[1]||1;
-  document.getElementById('repTop5').innerHTML=top.length?top.map(([c,a],i)=>`
-    <div style="margin-bottom:10px;cursor:pointer" onclick="repDrillCat('${c.replace(/'/g,"&#39;")}')">
-      <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-        <div style="display:flex;align-items:center;gap:8px">
-          <span style="font-size:16px;font-weight:700;color:var(--text3);min-width:18px">${i+1}</span>
-          <span style="font-size:13px">${c}</span>
-        </div>
-        <span class="mono" style="color:var(--red)">${fmt(a)}</span>
-      </div>
-      <div class="pbwrap"><div class="pbfill" style="width:${(a/mx*100).toFixed(1)}%;background:var(--red)"></div></div>
-    </div>`).join(''):'<div class="xs" style="color:var(--text3);padding:10px">No expense data this month.</div>';
-}
-
-// ── Savings accumulation chart ─────────────────────────────
-function repSavingsAccum(months, incVals, expVals){
-  const W=800, H=140, PL=70, PR=20, PT=10, PB=35;
-  const cw=W-PL-PR, ch=H-PT-PB;
-  let running=0;
-  const pts=months.map((m,i)=>{ running+=incVals[i]-expVals[i]; return running; });
-  const mx=Math.max(...pts.map(Math.abs),1);
-  const sy = v => PT+ch/2 - (v/mx)*(ch/2);
-  const sx = i => PL + i/(months.length-1||1)*cw;
-
-  const coords=months.map((m,i)=>[sx(i),sy(pts[i])]);
-  const smooth = ps => ps.map((p,i,a)=>{
-    if(i===0) return `M${p[0]},${p[1]}`;
-    const cpx=(a[i-1][0]+p[0])/2;
-    return `C${cpx},${a[i-1][1]} ${cpx},${p[1]} ${p[0]},${p[1]}`;
-  }).join(' ');
-
-  const zero=sy(0);
-  const areaPos=`${smooth(coords)} L${sx(months.length-1)},${zero} L${sx(0)},${zero} Z`;
-  const line=`<path d="${smooth(coords)}" fill="none" stroke="var(--accent)" stroke-width="2.5"/>`;
-  const areaFill=`<path d="${areaPos}" fill="var(--accent)" opacity="0.12"/>`;
-  const zeroLine=`<line x1="${PL}" y1="${zero}" x2="${W-PR}" y2="${zero}" stroke="var(--border2)" stroke-width="1"/>`;
-  const dots=coords.map(([x,y],i)=>`<circle cx="${x}" cy="${y}" r="3.5" fill="var(--accent)" stroke="var(--bg2)" stroke-width="2"><title>${months[i]}: ${fmt(pts[i])}</title></circle>`).join('');
-  const xlabels=months.map((m,i)=>`<text x="${sx(i)}" y="${H-8}" text-anchor="middle" font-size="9" fill="var(--text3)">${m.substring(5)+'/'+(m.substring(2,4))}</text>`).join('');
-
-  // Y axis
-  let ylines='';
-  [-mx/2,0,mx/2].forEach(v=>{
-    const yw=sy(v);
-    ylines+=`<line x1="${PL}" y1="${yw}" x2="${W-PR}" y2="${yw}" stroke="var(--border)" stroke-width="0.8" stroke-dasharray="4,3"/>`;
-    ylines+=`<text x="${PL-6}" y="${yw+4}" text-anchor="end" font-size="9" fill="var(--text3)">${(v/1000).toFixed(0)}k</text>`;
-  });
-
-  document.getElementById('repNWChart').innerHTML=repSVG(W,H,ylines+zeroLine+areaFill+line+dots+xlabels);
-}
-
-// ── Month-over-month comparison ────────────────────────────
-function repBuildMonthSelects(){
+// ── Month-over-month ───────────────────────────────────────
+function repPopulateMoM(){
   const months=[];
-  const seen=new Set();
-  DB.transactions.forEach(t=>{ if(t.date) seen.add(t.date.substring(0,7)); });
-  // Last 24 months
   const now=new Date();
   for(let i=0;i<24;i++){
     const d=new Date(now.getFullYear(),now.getMonth()-i,1);
-    const m=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-    months.push(m);
+    months.push(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'));
   }
-  const sel1=document.getElementById('repMom1'), sel2=document.getElementById('repMom2');
-  if(!sel1||!sel2) return;
-  const opts=months.map(m=>`<option value="${m}">${m}</option>`).join('');
-  sel1.innerHTML=opts; sel2.innerHTML=opts;
-  if(months.length>=2){ sel1.value=months[0]; sel2.value=months[1]; }
+  const s1=document.getElementById('repMom1'), s2=document.getElementById('repMom2');
+  if(!s1||!s2) return;
+  const opts=months.map(m=>'<option value="'+m+'">'+m+'</option>').join('');
+  if(!s1.innerHTML){ s1.innerHTML=opts; s2.innerHTML=opts; if(months.length>=2){ s1.value=months[0]; s2.value=months[1]; } }
   renderRepMoM();
 }
 
 function renderRepMoM(){
   const m1=document.getElementById('repMom1')?.value;
   const m2=document.getElementById('repMom2')?.value;
-  if(!m1||!m2) return;
+  const el=document.getElementById('repMomChart'); if(!el||!m1||!m2) return;
   const INC=['Income','Advance Received','Loan Repaid In'];
   const EXP=['Expense','Advance Expense','Advance Repayment','Loan Given'];
   const txn=DB.transactions;
-  const data=(mon)=>({
-    inc:txn.filter(t=>t.date.startsWith(mon)&&INC.includes(t.type)).reduce((s,t)=>s+t.amount,0),
-    exp:txn.filter(t=>t.date.startsWith(mon)&&EXP.includes(t.type)).reduce((s,t)=>s+t.amount,0),
-  });
-  const d1=data(m1), d2=data(m2);
-  const cats={};
-  txn.filter(t=>EXP.includes(t.type)&&(t.date.startsWith(m1)||t.date.startsWith(m2))).forEach(t=>{ cats[t.category||'Other']=1; });
+  const cats=new Set();
+  txn.filter(t=>EXP.includes(t.type)&&(t.date.startsWith(m1)||t.date.startsWith(m2))).forEach(t=>cats.add(t.category||'Other'));
 
-  const W=700, H=200, PL=140, PR=20, PB=20, PT=10;
+  const get=(mon,types)=>txn.filter(t=>t.date.startsWith(mon)&&types.includes(t.type)).reduce((s,t)=>s+t.amount,0);
   const rows=[
-    {l:'Income',v1:d1.inc,v2:d2.inc,clr:'var(--green)'},
-    {l:'Expenses',v1:d1.exp,v2:d2.exp,clr:'var(--red)'},
-    {l:'Net',v1:d1.inc-d1.exp,v2:d2.inc-d2.exp,clr:'var(--accent)'},
-    ...Object.keys(cats).sort().map(c=>({
-      l:c,
-      v1:txn.filter(t=>t.date.startsWith(m1)&&(t.category||'Other')===c&&EXP.includes(t.type)).reduce((s,t)=>s+t.amount,0),
-      v2:txn.filter(t=>t.date.startsWith(m2)&&(t.category||'Other')===c&&EXP.includes(t.type)).reduce((s,t)=>s+t.amount,0),
-      clr:'var(--text3)'
-    }))
+    {l:'Income',v1:get(m1,INC),v2:get(m2,INC),clr:'var(--green)'},
+    {l:'Expenses',v1:get(m1,EXP),v2:get(m2,EXP),clr:'var(--red)'},
+    {l:'Net',v1:get(m1,INC)-get(m1,EXP),v2:get(m2,INC)-get(m2,EXP),clr:'var(--accent)'},
+    ...[...cats].sort().map(c=>({l:c,
+      v1:txn.filter(t=>t.date.startsWith(m1)&&EXP.includes(t.type)&&(t.category||'Other')===c).reduce((s,t)=>s+t.amount,0),
+      v2:txn.filter(t=>t.date.startsWith(m2)&&EXP.includes(t.type)&&(t.category||'Other')===c).reduce((s,t)=>s+t.amount,0),
+      clr:'var(--text3)'}))
   ];
-
-  const rh=28, mx=Math.max(...rows.flatMap(r=>[r.v1,r.v2,0]),1);
-  const svgH=PT+(rh+6)*rows.length+PB+30;
-  const bw=Math.min(280,(W-PL-PR)/2-10);
-
-  let bars='', labels='';
-  // Header
-  bars+=`<text x="${PL+bw/2}" y="${PT+14}" text-anchor="middle" font-size="10" font-weight="700" fill="var(--accent)">${m1}</text>`;
-  bars+=`<text x="${PL+bw+10+bw/2}" y="${PT+14}" text-anchor="middle" font-size="10" font-weight="700" fill="var(--blue)">${m2}</text>`;
-
+  const W=700,PL=130,PR=70,rh=26,gap=5,PT=28;
+  const bw=Math.min(260,(W-PL-PR)/2-8);
+  const mx=Math.max(...rows.flatMap(r=>[r.v1,r.v2]),1);
+  const svgH=PT+rows.length*(rh+gap)+10;
+  let g='';
+  g+='<text x="'+(PL+bw/2)+'" y="18" text-anchor="middle" font-size="10" font-weight="700" fill="var(--accent)">'+m1+'</text>';
+  g+='<text x="'+(PL+bw+8+bw/2)+'" y="18" text-anchor="middle" font-size="10" font-weight="700" fill="var(--blue)">'+m2+'</text>';
   rows.forEach((r,i)=>{
-    const y=PT+26+i*(rh+6);
+    const y=PT+i*(rh+gap);
     const w1=Math.max(0,(r.v1/mx)*bw), w2=Math.max(0,(r.v2/mx)*bw);
-    bars+=`<rect x="${PL}" y="${y}" width="${w1}" height="${rh}" rx="3" fill="${r.clr}" opacity="0.75"/>`;
-    bars+=`<rect x="${PL+bw+10}" y="${y}" width="${w2}" height="${rh}" rx="3" fill="var(--blue)" opacity="0.6"/>`;
-    if(w1>24) bars+=`<text x="${PL+w1-4}" y="${y+rh/2+4}" text-anchor="end" font-size="9" fill="#fff">${fmt(r.v1)}</text>`;
-    else bars+=`<text x="${PL+w1+4}" y="${y+rh/2+4}" font-size="9" fill="${r.clr}">${fmt(r.v1)}</text>`;
-    if(w2>24) bars+=`<text x="${PL+bw+10+w2-4}" y="${y+rh/2+4}" text-anchor="end" font-size="9" fill="#fff">${fmt(r.v2)}</text>`;
-    else bars+=`<text x="${PL+bw+14+w2}" y="${y+rh/2+4}" font-size="9" fill="var(--blue)">${fmt(r.v2)}</text>`;
-    // Change indicator
+    g+='<text x="'+(PL-6)+'" y="'+(y+rh/2+4)+'" text-anchor="end" font-size="10" fill="var(--text2)">'+r.l+'</text>';
+    g+='<rect x="'+PL+'" y="'+y+'" width="'+w1+'" height="'+rh+'" rx="3" fill="'+r.clr+'" opacity="0.75"/>';
+    g+='<rect x="'+(PL+bw+8)+'" y="'+y+'" width="'+w2+'" height="'+rh+'" rx="3" fill="var(--blue)" opacity="0.6"/>';
+    const fv1=fmt(r.v1), fv2=fmt(r.v2);
+    g+='<text x="'+(w1>30?PL+w1-3:PL+w1+4)+'" y="'+(y+rh/2+4)+'" text-anchor="'+(w1>30?'end':'start')+'" font-size="9" fill="'+(w1>30?'#fff':r.clr)+'">'+fv1+'</text>';
+    g+='<text x="'+(w2>30?PL+bw+8+w2-3:PL+bw+12+w2)+'" y="'+(y+rh/2+4)+'" text-anchor="'+(w2>30?'end':'start')+'" font-size="9" fill="'+(w2>30?'#fff':'var(--blue)')+'">'+fv2+'</text>';
     const chg=r.v1>0?((r.v2-r.v1)/r.v1*100):0;
-    const chgStr=r.v1>0?(chg>0?'+':'')+chg.toFixed(0)+'%':'—';
-    const chgClr=chg>0?'var(--red)':chg<0?'var(--green)':'var(--text3)';
-    bars+=`<text x="${W-PR-4}" y="${y+rh/2+4}" text-anchor="end" font-size="9" fill="${chgClr}" font-weight="600">${chgStr}</text>`;
-    labels+=`<text x="${PL-6}" y="${y+rh/2+4}" text-anchor="end" font-size="10" fill="var(--text2)">${r.l}</text>`;
+    const cs=r.v1>0?(chg>0?'+':'')+chg.toFixed(0)+'%':'—';
+    const cc=chg>0?'var(--red)':chg<0?'var(--green)':'var(--text3)';
+    g+='<text x="'+(W-5)+'" y="'+(y+rh/2+4)+'" text-anchor="end" font-size="9" fill="'+cc+'" font-weight="600">'+cs+'</text>';
   });
-  document.getElementById('repMomChart').innerHTML=repSVG(W,svgH,labels+bars);
+  el.innerHTML=repSVG(W,svgH,g);
 }
 
-// ── Drill-down helpers ─────────────────────────────────────
+// ── Waterfall ──────────────────────────────────────────────
+function repRenderWaterfall(txnAll){
+  const el=document.getElementById('repWaterfall'); if(!el) return;
+  const INC=['Income','Advance Received','Loan Repaid In'];
+  const EXP=['Expense','Advance Expense','Advance Repayment','Loan Given'];
+  const inc=txnAll.filter(t=>INC.includes(t.type)).reduce((s,t)=>s+t.amount,0);
+  const exp=txnAll.filter(t=>EXP.includes(t.type)).reduce((s,t)=>s+t.amount,0);
+  const xfr=txnAll.filter(t=>t.type==='Transfer'||t.type==='Cash Withdrawal').reduce((s,t)=>s+t.amount,0);
+  const net=inc-exp;
+  const bars=[
+    {l:'Income',v:inc,base:0,clr:'var(--green)'},
+    {l:'Expenses',v:exp,base:inc,neg:true,clr:'var(--red)'},
+    {l:'Transfers',v:xfr,base:Math.max(0,net),neg:true,clr:'var(--accent)'},
+    {l:'Net Savings',v:Math.abs(net),base:0,clr:net>=0?'var(--green)':'var(--red)'},
+  ].filter(b=>b.v>0);
+  if(!bars.length){ el.innerHTML='<div class="xs" style="color:var(--text3);padding:10px">No data in range.</div>'; return; }
+  const W=660,H=150,PL=60,PB=38,PT=10,PR=20;
+  const bw=Math.min(90,(W-PL-PR)/bars.length-18);
+  const allV=bars.map(b=>b.base+(b.neg?0:b.v)); const mx=Math.max(...allV,inc,1)*1.1;
+  const sy=v=>PT+(H-PB-PT)*(1-v/mx);
+  let g='';
+  bars.forEach((b,i)=>{
+    const x=PL+(W-PL-PR)*i/bars.length+(W-PL-PR)/bars.length/2-bw/2;
+    const top=b.neg?sy(b.base):sy(b.v), bot=b.neg?sy(b.base-b.v):sy(0);
+    const bh=Math.max(2,Math.abs(bot-top));
+    const realTop=Math.min(top,bot);
+    g+='<rect x="'+x+'" y="'+realTop+'" width="'+bw+'" height="'+bh+'" rx="4" fill="'+b.clr+'" opacity="0.8"/>';
+    g+='<text x="'+(x+bw/2)+'" y="'+(realTop-4)+'" text-anchor="middle" font-size="9" fill="'+b.clr+'" font-weight="600">'+fmt(b.v)+'</text>';
+    g+='<text x="'+(x+bw/2)+'" y="'+(H-10)+'" text-anchor="middle" font-size="10" fill="var(--text3)">'+b.l+'</text>';
+    if(i>0&&b.neg){ const px=PL+(W-PL-PR)*(i-1)/bars.length+(W-PL-PR)/bars.length/2+bw/2; g+='<line x1="'+px+'" y1="'+sy(b.base)+'" x2="'+x+'" y2="'+sy(b.base)+'" stroke="var(--border2)" stroke-width="1" stroke-dasharray="3,2"/>'; }
+  });
+  el.innerHTML=repSVG(W,H,g);
+}
+
+// ── Top 5 ──────────────────────────────────────────────────
+function repRenderTop5(){
+  const now=new Date();
+  const mon=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+  const lbl=document.getElementById('repTop5Month'); if(lbl) lbl.textContent=mon.substring(5)+'/'+mon.substring(0,4);
+  const txn=DB.transactions.filter(t=>t.date.startsWith(mon)&&['Expense','Advance Expense'].includes(t.type));
+  const cats={}; txn.forEach(t=>{ const c=t.category||'Other'; cats[c]=(cats[c]||0)+t.amount; });
+  const top=Object.entries(cats).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const mx=top[0]?.[1]||1;
+  const el=document.getElementById('repTop5'); if(!el) return;
+  if(!top.length){ el.innerHTML='<div class="xs" style="color:var(--text3);padding:10px">No expense data this month.</div>'; return; }
+  let html='';
+  top.forEach(([c,a],i)=>{
+    const pct=(a/mx*100).toFixed(1);
+    html+='<div style="margin-bottom:10px;cursor:pointer" onclick="repDrillCat(this.dataset.cat)" data-cat="'+c.replace(/"/g,'&quot;')+'">';
+    html+='<div style="display:flex;justify-content:space-between;margin-bottom:4px">';
+    html+='<div style="display:flex;align-items:center;gap:8px"><span style="font-size:16px;font-weight:700;color:var(--text3)">'+(i+1)+'</span><span style="font-size:13px">'+c+'</span></div>';
+    html+='<span class="mono" style="color:var(--red)">'+fmt(a)+'</span></div>';
+    html+='<div class="pbwrap"><div class="pbfill" style="width:'+pct+'%;background:var(--red)"></div></div></div>';
+  });
+  el.innerHTML=html;
+}
+
+// ── Savings accumulation line ──────────────────────────────
+function repRenderSavingsLine(txnAll, months){
+  const el=document.getElementById('repNWChart'); if(!el) return;
+  const INC=['Income','Advance Received','Loan Repaid In'];
+  const EXP=['Expense','Advance Expense','Advance Repayment','Loan Given'];
+  const W=760,H=130,PL=65,PR=15,PT=10,PB=32;
+  const cw=W-PL-PR, ch=H-PT-PB;
+  let running=0;
+  const pts=months.map(m=>{
+    running+=txnAll.filter(t=>t.date.startsWith(m)&&INC.includes(t.type)).reduce((s,t)=>s+t.amount,0)
+            -txnAll.filter(t=>t.date.startsWith(m)&&EXP.includes(t.type)).reduce((s,t)=>s+t.amount,0);
+    return running;
+  });
+  const mx=Math.max(...pts.map(Math.abs),1);
+  const sx=i=>PL+i/(Math.max(months.length-1,1))*cw;
+  const sy=v=>PT+ch/2-(v/mx)*(ch/2);
+  const zero=sy(0);
+  const smooth=ps=>ps.map(([x,y],i,a)=>{ if(i===0) return 'M'+x+','+y; const cx=(a[i-1][0]+x)/2; return 'C'+cx+','+a[i-1][1]+' '+cx+','+y+' '+x+','+y; }).join(' ');
+  const coords=months.map((_,i)=>[sx(i),sy(pts[i])]);
+  let g='';
+  [-.5,0,.5].forEach(f=>{ const yw=sy(mx*f); g+='<line x1="'+PL+'" y1="'+yw+'" x2="'+(W-PR)+'" y2="'+yw+'" stroke="var(--border)" stroke-width="0.7" stroke-dasharray="4,3"/>'; g+='<text x="'+(PL-5)+'" y="'+(yw+4)+'" text-anchor="end" font-size="8" fill="var(--text3)">'+(mx*f/1000).toFixed(0)+'k</text>'; });
+  g+='<line x1="'+PL+'" y1="'+zero+'" x2="'+(W-PR)+'" y2="'+zero+'" stroke="var(--border2)" stroke-width="1.5"/>';
+  g+='<path d="'+smooth(coords)+' L'+sx(months.length-1)+','+zero+' L'+sx(0)+','+zero+' Z" fill="var(--accent)" opacity="0.13"/>';
+  g+='<path d="'+smooth(coords)+'" fill="none" stroke="var(--accent)" stroke-width="2.5"/>';
+  coords.forEach(([x,y],i)=>{ g+='<circle cx="'+x+'" cy="'+y+'" r="3.5" fill="var(--accent)" stroke="var(--bg2)" stroke-width="2"><title>'+months[i]+': '+fmt(pts[i])+'</title></circle>'; });
+  months.forEach((_,i)=>{ g+='<text x="'+sx(i)+'" y="'+(H-8)+'" text-anchor="middle" font-size="9" fill="var(--text3)">'+months[i].substring(5)+'/'+months[i].substring(2,4)+'</text>'; });
+  el.innerHTML=repSVG(W,H,g);
+}
+
+// ── Drill-down ─────────────────────────────────────────────
 function repDrillCat(cat){
-  const {from,to}=repGetRange();
-  const txns=DB.transactions.filter(t=>t.date>=from&&t.date<=to&&(t.category||'Other')===cat);
+  const from=document.getElementById('repFrom')?.value||'';
+  const to=document.getElementById('repTo')?.value||'';
+  const txns=DB.transactions.filter(t=>(!from||t.date>=from)&&(!to||t.date<=to)&&(t.category||'Other')===cat);
   repShowDrill('Category: '+cat, txns);
 }
 function repDrillMonth(mon, kind){
   const INC=['Income','Advance Received','Loan Repaid In'];
   const EXP=['Expense','Advance Expense','Advance Repayment','Loan Given'];
   const types=kind==='income'?INC:EXP;
-  const txns=DB.transactions.filter(t=>t.date.startsWith(mon)&&types.includes(t.type));
-  repShowDrill((kind==='income'?'Income':'Expenses')+' — '+mon, txns);
+  repShowDrill((kind==='income'?'Income':'Expenses')+' — '+mon, DB.transactions.filter(t=>t.date.startsWith(mon)&&types.includes(t.type)));
 }
 function repShowDrill(title, txns){
   const INC=['Income','Advance Received','Loan Repaid In'];
-  document.getElementById('repDrillTitle').textContent=title+' ('+txns.length+' transactions)';
-  document.getElementById('repDrillBody').innerHTML=txns.sort((a,b)=>b.date.localeCompare(a.date))
-    .map(t=>`<tr>
-      <td class="mono xs">${fmtDate(t.date)}</td>
-      <td><span class="bdg ${TXN_CFG[t.type]?.cls||''}">${t.type}</span></td>
-      <td>${t.desc||'—'}</td>
-      <td class="xs">${t.category||'—'}</td>
-      <td class="xs">${t.from||'—'}</td>
-      <td class="mono" style="text-align:right;color:${INC.includes(t.type)?'var(--green)':'var(--red)'}">${fmt(t.amount)}</td>
-    </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--text3)">No transactions</td></tr>';
+  document.getElementById('repDrillTitle').textContent=title+' ('+txns.length+')';
+  document.getElementById('repDrillBody').innerHTML=txns.sort((a,b)=>b.date.localeCompare(a.date)).map(t=>'<tr><td class="mono xs">'+fmtDate(t.date)+'</td><td><span class="bdg '+(TXN_CFG[t.type]?.cls||'')+'">'+t.type+'</span></td><td>'+(t.desc||'—')+'</td><td class="xs">'+(t.category||'—')+'</td><td class="xs">'+(t.from||'—')+'</td><td class="mono" style="text-align:right;color:'+(INC.includes(t.type)?'var(--green)':'var(--red)')+'">'+fmt(t.amount)+'</td></tr>').join('')||'<tr><td colspan="6" style="text-align:center;color:var(--text3)">No transactions</td></tr>';
   const card=document.getElementById('repDrillCard');
   card.style.display='';
   card.scrollIntoView({behavior:'smooth',block:'nearest'});
@@ -5176,59 +5115,65 @@ function repShowDrill(title, txns){
 // ── Main render ────────────────────────────────────────────
 function renderReports(){
   repInit();
-  const {from,to}=repGetRange();
-  const txn=DB.transactions;
+  const from=document.getElementById('repFrom')?.value||'';
+  const to=document.getElementById('repTo')?.value||'';
+  if(!from||!to){ return; }
+
+  const txnAll=DB.transactions.filter(t=>t.date>=from&&t.date<=to);
   const INC=['Income','Advance Received','Loan Repaid In'];
   const EXP=['Expense','Advance Expense','Advance Repayment','Loan Given'];
 
   // Summary cards
-  const filtered=txn.filter(t=>t.date>=from&&t.date<=to);
-  const totalInc=filtered.filter(t=>INC.includes(t.type)).reduce((s,t)=>s+t.amount,0);
-  const totalExp=filtered.filter(t=>EXP.includes(t.type)).reduce((s,t)=>s+t.amount,0);
+  const totalInc=txnAll.filter(t=>INC.includes(t.type)).reduce((s,t)=>s+t.amount,0);
+  const totalExp=txnAll.filter(t=>EXP.includes(t.type)).reduce((s,t)=>s+t.amount,0);
   const net=totalInc-totalExp;
-  const txnCount=filtered.length;
-  document.getElementById('repSummaryCards').innerHTML=[
-    {l:'Total Income',v:fmt(totalInc),c:'var(--green)',s:filtered.filter(t=>INC.includes(t.type)).length+' transactions'},
-    {l:'Total Expenses',v:fmt(totalExp),c:'var(--red)',s:filtered.filter(t=>EXP.includes(t.type)).length+' transactions'},
-    {l:'Net Savings',v:fmt(net),c:net>=0?'var(--green)':'var(--red)',s:totalInc>0?((net/totalInc)*100).toFixed(1)+'% savings rate':'—'},
-    {l:'Transactions',v:txnCount,c:'var(--text2)',s:'in period'},
-  ].map(c=>`<div class="sc"><div class="sl">${c.l}</div><div class="sv" style="color:${c.c}">${c.v}</div><div style="font-size:11px;color:var(--text3);margin-top:2px">${c.s}</div></div>`).join('');
+  const sc=document.getElementById('repSummaryCards');
+  if(sc) sc.innerHTML=
+    repCard('Total Income',fmt(totalInc),'var(--green)',txnAll.filter(t=>INC.includes(t.type)).length+' transactions')
+   +repCard('Total Expenses',fmt(totalExp),'var(--red)',txnAll.filter(t=>EXP.includes(t.type)).length+' transactions')
+   +repCard('Net Savings',fmt(net),net>=0?'var(--green)':'var(--red)',totalInc>0?((net/totalInc)*100).toFixed(1)+'% savings rate':'—')
+   +repCard('Transactions',txnAll.length,'var(--text2)',from+' → '+to);
 
-  // Build months array for the date range
-  const startD=new Date(from), endD=new Date(to);
+  // Build months in range
   const months=[];
-  const d=new Date(startD.getFullYear(), startD.getMonth(), 1);
-  while(d<=endD){ months.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`); d.setMonth(d.getMonth()+1); }
-  if(!months.length){ months.push(`${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}`); }
+  const [fy,fm]=from.split('-').map(Number);
+  const [ty,tm]=to.split('-').map(Number);
+  let cy=fy, cm=fm;
+  while(cy<ty||(cy===ty&&cm<=tm)){ months.push(cy+'-'+String(cm).padStart(2,'0')); cm++; if(cm>12){cm=1;cy++;} if(months.length>48) break; }
+  if(!months.length) months.push(from.substring(0,7));
 
-  const incVals=months.map(m=>txn.filter(t=>t.date.startsWith(m)&&INC.includes(t.type)).reduce((s,t)=>s+t.amount,0));
-  const expVals=months.map(m=>txn.filter(t=>t.date.startsWith(m)&&EXP.includes(t.type)).reduce((s,t)=>s+t.amount,0));
+  const incV=months.map(m=>txnAll.filter(t=>t.date.startsWith(m)&&INC.includes(t.type)).reduce((s,t)=>s+t.amount,0));
+  const expV=months.map(m=>txnAll.filter(t=>t.date.startsWith(m)&&EXP.includes(t.type)).reduce((s,t)=>s+t.amount,0));
 
-  // Trend chart
-  repTrend(months, incVals, expVals);
+  repTrend(months, incV, expV);
 
-  // Donut charts — filtered to date range
+  // Donuts
   const ic={}, ec={};
-  filtered.filter(t=>INC.includes(t.type)).forEach(t=>{ const c=t.category||'Other'; ic[c]=(ic[c]||0)+t.amount; });
-  filtered.filter(t=>EXP.includes(t.type)).forEach(t=>{ const c=t.category||'Other'; ec[c]=(ec[c]||0)+t.amount; });
-  repDonut(Object.entries(ic).map(([k,v])=>({k,v})), 'total income', 'repIncDonut', 'repDrillCat');
-  repDonut(Object.entries(ec).map(([k,v])=>({k,v})), 'total expenses', 'repExpDonut', 'repDrillCat');
+  txnAll.filter(t=>INC.includes(t.type)).forEach(t=>{ ic[t.category||'Other']=(ic[t.category||'Other']||0)+t.amount; });
+  txnAll.filter(t=>EXP.includes(t.type)).forEach(t=>{ ec[t.category||'Other']=(ec[t.category||'Other']||0)+t.amount; });
+  if(_repView.income)  repDonut(Object.entries(ic).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([label,value])=>({label,value})), totalInc, 'repIncDonut');
+  else { const e=document.getElementById('repIncDonut'); if(e) e.innerHTML='<div style="color:var(--text3);font-size:12px;padding:10px">Income hidden</div>'; }
+  if(_repView.expense) repDonut(Object.entries(ec).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([label,value])=>({label,value})), totalExp, 'repExpDonut');
+  else { const e=document.getElementById('repExpDonut'); if(e) e.innerHTML='<div style="color:var(--text3);font-size:12px;padding:10px">Expenses hidden</div>'; }
 
-  // MoM comparison selects
-  repBuildMonthSelects();
-
-  // Waterfall
-  repWaterfall(from, to);
-
-  // Top 5 this month
-  repTop5(from, to);
-
-  // Savings accumulation
-  repSavingsAccum(months, incVals, expVals);
-
-  // Full ledger
+  repPopulateMoM();
+  repRenderWaterfall(txnAll);
+  repRenderTop5();
+  repRenderSavingsLine(txnAll, months);
   renderLedger();
 }
+
+function renderLedger(){
+  const fs=(v('ledSrch')||'').toLowerCase(), ft=v('ledType'), fm=v('ledMon');
+  let data=DB.transactions;
+  if(fs) data=data.filter(t=>(t.desc+t.category+t.from+t.to).toLowerCase().includes(fs));
+  if(ft) data=data.filter(t=>t.type===ft);
+  if(fm) data=data.filter(t=>t.date.startsWith(fm));
+  const tb=document.getElementById('ledBody');
+  tb.innerHTML=!data.length?'<tr><td colspan="7"><div class="empty">No records.</div></td></tr>':
+    data.map(t=>{ const sgn=['Income','Advance Received'].includes(t.type); return '<tr><td class="mono xs">'+fmtDate(t.date)+'</td><td><span class="bdg '+(BDGMAP[t.type]||'exp')+'">'+t.type+'</span></td><td class="xs">'+(t.category||'—')+'</td><td>'+(t.desc||'—')+(t.entity?'<span class="xs" style="color:var(--orange)"> '+t.entity+'</span>':'')+'</td><td class="xs">'+(t.from||'—')+'</td><td class="xs">'+(t.to||'—')+'</td><td class="mono" style="text-align:right;color:'+(sgn?'var(--green)':'var(--red)')+'">'+( sgn?'+':'−')+fmt(t.amount)+'</td></tr>'; }).join('');
+}
+function exportLedgerCSV(){ exportTxnCSV(); }
 
 
 // ════════════════════════════════════════════════════════════
@@ -6010,38 +5955,7 @@ function mbPatchGo(){
   }, {passive:true});
 })();
 
-function renderReports(){
-  const txn=DB.transactions;
-  const ic={}, ec={};
-  txn.filter(t=>t.type==='Income').forEach(t=>{ic[t.category||'Other']=(ic[t.category||'Other']||0)+t.amount;});
-  txn.filter(t=>['Expense','Advance Expense'].includes(t.type)).forEach(t=>{ec[t.category||'Other']=(ec[t.category||'Other']||0)+t.amount;});
 
-  const mkBars=(obj,color)=>{
-    const pairs=Object.entries(obj).sort((a,b)=>b[1]-a[1]);
-    const mx=pairs[0]?.[1]||1;
-    return pairs.map(([c,v])=>`<div class="repbar">
-      <div class="repbar-row"><span>${c}</span><span class="mono" style="color:${color}">${fmt(v)}</span></div>
-      <div class="pbwrap"><div class="pbfill" style="width:${(v/mx*100).toFixed(1)}%;background:${color}"></div></div>
-    </div>`).join('')||'<div class="xs">No data.</div>';
-  };
-  document.getElementById('rep-inc').innerHTML=mkBars(ic,'var(--green)');
-  document.getElementById('rep-exp').innerHTML=mkBars(ec,'var(--red)');
-
-  // Monthly savings rate last 12 months
-  const now=new Date();
-  const m12=Array.from({length:12},(_,i)=>{const d=new Date(now.getFullYear(),now.getMonth()-11+i,1);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;});
-  document.getElementById('rep-sav').innerHTML=m12.map(m=>{
-    const inc=txn.filter(t=>t.type==='Income'&&t.date.startsWith(m)).reduce((s,t)=>s+t.amount,0);
-    const exp=txn.filter(t=>['Expense','Advance Expense'].includes(t.type)&&t.date.startsWith(m)).reduce((s,t)=>s+t.amount,0);
-    const rate=inc>0?((inc-exp)/inc*100).toFixed(0):'—';
-    const pct=inc>0?Math.max(0,Math.min(100,(inc-exp)/inc*100)):0;
-    return `<div class="repbar">
-      <div class="repbar-row"><span>${m.substring(5)+'/'+(m.substring(0,4))}</span><span class="mono" style="color:${pct>=0?'var(--green)':'var(--red)'}">${rate}%</span></div>
-      <div class="pbwrap"><div class="pbfill" style="width:${pct}%;background:${pct>=30?'var(--green)':pct>=0?'var(--accent)':'var(--red)'}"></div></div>
-    </div>`;
-  }).join('');
-  renderLedger();
-}
 function renderLedger(){
   const fs=(v('ledSrch')||'').toLowerCase(), ft=v('ledType'), fm=v('ledMon');
   let data=DB.transactions;
@@ -6064,6 +5978,7 @@ function renderLedger(){
     }).join('');
 }
 function exportLedgerCSV(){ exportTxnCSV(); }
+
 
 // ════════════════════════════════════════════════════════════
 //  SETTINGS
